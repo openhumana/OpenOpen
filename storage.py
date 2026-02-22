@@ -2,6 +2,7 @@
 storage.py - In-memory storage for call states and campaign data.
 Manages call tracking, campaign configuration, and status reporting.
 Persists completed call logs to JSON file for historical reporting.
+Supports per-user data isolation via user_id parameter.
 """
 
 import os
@@ -15,16 +16,54 @@ lock = threading.Lock()
 call_states = {}
 
 LOGS_DIR = "logs"
-CALL_LOG_FILE = os.path.join(LOGS_DIR, "call_history.json")
-SETTINGS_FILE = os.path.join(LOGS_DIR, "app_settings.json")
 
 DEFAULT_VOICEMAIL_URL = "https://res.cloudinary.com/doaojtas6/video/upload/v1770290941/ElevenLabs_2026-01-28T19_39_03_Greg_-_Driving_Tours_App__pvc_sp100_s50_sb75_v3_njgmqy.wav"
 
 
-def get_voicemail_url():
+def _user_logs_dir(user_id):
+    if user_id is None:
+        return LOGS_DIR
+    return os.path.join(LOGS_DIR, f"user_{user_id}")
+
+
+def _user_file(user_id, filename):
+    d = _user_logs_dir(user_id)
+    return os.path.join(d, filename)
+
+
+_cid_to_user = {}
+
+
+def get_user_for_call(call_control_id):
+    with lock:
+        return _cid_to_user.get(call_control_id)
+
+
+def _default_campaign():
+    return {
+        "active": False,
+        "audio_url": None,
+        "transfer_number": None,
+        "numbers": [],
+        "dialed_count": 0,
+        "stop_requested": False,
+        "dial_mode": "sequential",
+        "batch_size": 5,
+    }
+
+
+_campaigns = {}
+
+
+def _campaign_key(user_id):
+    return user_id if user_id is not None else "global"
+
+
+def get_voicemail_url(user_id=None):
+    settings_file = _user_file(user_id, "app_settings.json")
     try:
-        if os.path.exists(SETTINGS_FILE):
-            with open(SETTINGS_FILE, "r") as f:
+        if os.path.exists(settings_file):
+            with open(settings_file, "r") as f:
                 settings = json.load(f)
                 return settings.get("voicemail_url", DEFAULT_VOICEMAIL_URL)
     except Exception:
@@ -32,62 +71,70 @@ def get_voicemail_url():
     return DEFAULT_VOICEMAIL_URL
 
 
-def save_voicemail_url(url):
-    os.makedirs(LOGS_DIR, exist_ok=True)
+def save_voicemail_url(url, user_id=None):
+    d = _user_logs_dir(user_id)
+    os.makedirs(d, exist_ok=True)
+    settings_file = _user_file(user_id, "app_settings.json")
     settings = {}
     try:
-        if os.path.exists(SETTINGS_FILE):
-            with open(SETTINGS_FILE, "r") as f:
+        if os.path.exists(settings_file):
+            with open(settings_file, "r") as f:
                 settings = json.load(f)
     except Exception:
         pass
     settings["voicemail_url"] = url
     settings["updated_at"] = datetime.utcnow().isoformat()
-    with open(SETTINGS_FILE, "w") as f:
+    with open(settings_file, "w") as f:
         json.dump(settings, f, indent=2)
     return settings
 
 
-def get_voice_preset():
+def get_voice_preset(user_id=None):
+    settings_file = _user_file(user_id, "app_settings.json")
     try:
-        if os.path.exists(SETTINGS_FILE):
-            with open(SETTINGS_FILE, "r") as f:
+        if os.path.exists(settings_file):
+            with open(settings_file, "r") as f:
                 settings = json.load(f)
                 return settings.get("voice_preset", {})
     except Exception:
         pass
     return {}
 
-def save_voice_preset(preset):
-    os.makedirs(LOGS_DIR, exist_ok=True)
+def save_voice_preset(preset, user_id=None):
+    d = _user_logs_dir(user_id)
+    os.makedirs(d, exist_ok=True)
+    settings_file = _user_file(user_id, "app_settings.json")
     settings = {}
     try:
-        if os.path.exists(SETTINGS_FILE):
-            with open(SETTINGS_FILE, "r") as f:
+        if os.path.exists(settings_file):
+            with open(settings_file, "r") as f:
                 settings = json.load(f)
     except Exception:
         pass
     settings["voice_preset"] = preset
     settings["updated_at"] = datetime.utcnow().isoformat()
-    with open(SETTINGS_FILE, "w") as f:
+    with open(settings_file, "w") as f:
         json.dump(settings, f, indent=2)
     return preset
 
 
-def _load_call_history():
+def _load_call_history(user_id=None):
+    call_log_file = _user_file(user_id, "call_history.json")
     try:
-        if os.path.exists(CALL_LOG_FILE):
-            with open(CALL_LOG_FILE, "r") as f:
+        if os.path.exists(call_log_file):
+            with open(call_log_file, "r") as f:
                 return json.load(f)
     except Exception:
         pass
     return []
 
 
-def _save_call_history(history):
-    os.makedirs(LOGS_DIR, exist_ok=True)
+def _save_call_history(history, user_id=None):
+    d = _user_logs_dir(user_id)
+    os.makedirs(d, exist_ok=True)
+    call_log_file = _user_file(user_id, "call_history.json")
     try:
-        with open(CALL_LOG_FILE, "w") as f:
+        with open(call_log_file, "w") as f:
             json.dump(history, f, indent=2)
     except Exception:
         pass
@@ -101,6 +148,7 @@ def persist_call_log(call_control_id):
         state = call_states.get(call_control_id)
         if not state:
             return
+        user_id = state.get("user_id")
         now = datetime.utcnow()
         ring_duration = None
         if state.get("ring_start"):
@@ -126,19 +174,19 @@ def persist_call_log(call_control_id):
         }
     cutoff_dt = datetime.utcnow() - timedelta(days=7)
     with _file_lock:
-        history = _load_call_history()
+        history = _load_call_history(user_id)
         history.append(entry)
         cleaned = []
         for h in history:
             h_dt = _parse_ts(h.get("timestamp", ""))
             if h_dt and h_dt >= cutoff_dt:
                 cleaned.append(h)
-        _save_call_history(cleaned)
+        _save_call_history(cleaned, user_id)
 
 
-def clear_call_history():
+def clear_call_history(user_id=None):
     with _file_lock:
-        _save_call_history([])
+        _save_call_history([], user_id)
 
 
 def _parse_ts(ts_str):
@@ -150,9 +198,9 @@ def _parse_ts(ts_str):
     return None
 
 
-def get_call_history(start_date=None, end_date=None):
+def get_call_history(start_date=None, end_date=None, user_id=None):
     with _file_lock:
-        history = _load_call_history()
+        history = _load_call_history(user_id)
     if not start_date and not end_date:
         return history
 
@@ -171,74 +219,91 @@ def get_call_history(start_date=None, end_date=None):
         filtered.append(entry)
     return filtered
 
-campaign = {
-    "active": False,
-    "audio_url": None,
-    "transfer_number": None,
-    "numbers": [],
-    "dialed_count": 0,
-    "stop_requested": False,
-    "dial_mode": "sequential",
-    "batch_size": 5,
-}
 
-
-def reset_campaign():
-    resume_after_transfer()
+def reset_campaign(user_id=None):
+    resume_after_transfer(user_id=user_id)
+    key = _campaign_key(user_id)
     with lock:
-        campaign["active"] = False
-        campaign["audio_url"] = None
-        campaign["transfer_number"] = None
-        campaign["numbers"] = []
-        campaign["dialed_count"] = 0
-        campaign["stop_requested"] = False
-        campaign["dial_mode"] = "sequential"
-        campaign["batch_size"] = 5
-        call_states.clear()
+        _campaigns[key] = _default_campaign()
+        if user_id is None:
+            call_states.clear()
+            _cid_to_user.clear()
+        else:
+            cids_to_remove = [cid for cid, st in call_states.items() if st.get("user_id") == user_id]
+            for cid in cids_to_remove:
+                del call_states[cid]
+                _cid_to_user.pop(cid, None)
 
 
-def set_campaign(audio_url, transfer_number, numbers, dial_mode="sequential", batch_size=5, dial_delay=2, from_number=None):
+def set_campaign(audio_url, transfer_number, numbers, dial_mode="sequential", batch_size=5, dial_delay=2, from_number=None, user_id=None):
+    key = _campaign_key(user_id)
     with lock:
-        campaign["active"] = True
-        campaign["audio_url"] = audio_url
-        campaign["transfer_number"] = transfer_number
-        campaign["numbers"] = list(numbers)
-        campaign["dialed_count"] = 0
-        campaign["stop_requested"] = False
-        campaign["dial_mode"] = dial_mode
-        campaign["batch_size"] = max(1, min(int(batch_size), 50))
-        campaign["dial_delay"] = max(1, min(10, int(dial_delay)))
-        campaign["from_number"] = from_number
-        call_states.clear()
+        camp = _default_campaign()
+        camp["active"] = True
+        camp["audio_url"] = audio_url
+        camp["transfer_number"] = transfer_number
+        camp["numbers"] = list(numbers)
+        camp["dialed_count"] = 0
+        camp["stop_requested"] = False
+        camp["dial_mode"] = dial_mode
+        camp["batch_size"] = max(1, min(int(batch_size), 50))
+        camp["dial_delay"] = max(1, min(10, int(dial_delay)))
+        camp["from_number"] = from_number
+        _campaigns[key] = camp
+        if user_id is None:
+            call_states.clear()
+            _cid_to_user.clear()
+        else:
+            cids_to_remove = [cid for cid, st in call_states.items() if st.get("user_id") == user_id]
+            for cid in cids_to_remove:
+                del call_states[cid]
+                _cid_to_user.pop(cid, None)
 
 
-def stop_campaign():
+def stop_campaign(user_id=None):
+    key = _campaign_key(user_id)
     with lock:
-        campaign["stop_requested"] = True
-        campaign["active"] = False
+        camp = _campaigns.get(key)
+        if camp:
+            camp["stop_requested"] = True
+            camp["active"] = False
 
 
-def mark_campaign_complete():
+def mark_campaign_complete(user_id=None):
+    key = _campaign_key(user_id)
     with lock:
-        campaign["active"] = False
+        camp = _campaigns.get(key)
+        if camp:
+            camp["active"] = False
 
 
-def increment_dialed():
+def increment_dialed(user_id=None):
+    key = _campaign_key(user_id)
     with lock:
-        campaign["dialed_count"] += 1
+        camp = _campaigns.get(key)
+        if camp:
+            camp["dialed_count"] += 1
 
 
-def is_campaign_active():
+def is_campaign_active(user_id=None):
+    key = _campaign_key(user_id)
     with lock:
-        return campaign["active"] and not campaign["stop_requested"]
+        camp = _campaigns.get(key)
+        if camp:
+            return camp["active"] and not camp["stop_requested"]
+        return False
 
 
-def get_campaign():
+def get_campaign(user_id=None):
+    key = _campaign_key(user_id)
     with lock:
-        return dict(campaign)
+        camp = _campaigns.get(key)
+        if camp:
+            return dict(camp)
+        return dict(_default_campaign())
 
 
-def create_call_state(call_control_id, number):
+def create_call_state(call_control_id, number, user_id=None):
     from_number = os.environ.get("TELNYX_FROM_NUMBER", "")
     with lock:
         call_states[call_control_id] = {
@@ -257,7 +322,10 @@ def create_call_state(call_control_id, number):
             "amd_result": None,
             "hangup_cause": None,
             "transcript": [],
+            "user_id": user_id,
         }
+        if user_id is not None:
+            _cid_to_user[call_control_id] = user_id
 
 
 def get_call_state(call_control_id):
@@ -315,36 +383,56 @@ def call_states_snapshot():
 def clear_call_states():
     with lock:
         call_states.clear()
+        _cid_to_user.clear()
 
 
-_transfer_pause_event = threading.Event()
-_transfer_pause_event.set()
-_active_transfer_cids = set()
+_transfer_pause_events = {}
+_active_transfer_cids_per_user = {}
 
-def pause_for_transfer(call_control_id):
+def _get_transfer_event(user_id=None):
+    key = _campaign_key(user_id)
+    if key not in _transfer_pause_events:
+        evt = threading.Event()
+        evt.set()
+        _transfer_pause_events[key] = evt
+    return _transfer_pause_events[key]
+
+def _get_active_transfer_cids(user_id=None):
+    key = _campaign_key(user_id)
+    if key not in _active_transfer_cids_per_user:
+        _active_transfer_cids_per_user[key] = set()
+    return _active_transfer_cids_per_user[key]
+
+def pause_for_transfer(call_control_id, user_id=None):
     with lock:
-        _active_transfer_cids.add(call_control_id)
-    _transfer_pause_event.clear()
+        cids = _get_active_transfer_cids(user_id)
+        cids.add(call_control_id)
+    _get_transfer_event(user_id).clear()
 
-def resume_after_transfer(call_control_id=None):
+def resume_after_transfer(call_control_id=None, user_id=None):
     with lock:
+        cids = _get_active_transfer_cids(user_id)
         if call_control_id:
-            _active_transfer_cids.discard(call_control_id)
+            cids.discard(call_control_id)
         else:
-            _active_transfer_cids.clear()
-        if not _active_transfer_cids:
-            _transfer_pause_event.set()
+            cids.clear()
+        if not cids:
+            _get_transfer_event(user_id).set()
 
-def is_transfer_paused():
+def is_transfer_paused(user_id=None):
     with lock:
-        return len(_active_transfer_cids) > 0
+        cids = _get_active_transfer_cids(user_id)
+        return len(cids) > 0
 
 def is_active_transfer(call_control_id):
     with lock:
-        return call_control_id in _active_transfer_cids
+        for cids in _active_transfer_cids_per_user.values():
+            if call_control_id in cids:
+                return True
+        return False
 
-def wait_if_transfer_paused(timeout=None):
-    _transfer_pause_event.wait(timeout=timeout)
+def wait_if_transfer_paused(timeout=None, user_id=None):
+    _get_transfer_event(user_id).wait(timeout=timeout)
 
 _call_complete_events = {}
 _call_complete_lock = threading.Lock()
@@ -364,7 +452,7 @@ def signal_call_complete(call_control_id):
             event.set()
 
 
-def get_all_statuses():
+def get_all_statuses(user_id=None):
     now = datetime.utcnow()
     now_ts = now.timestamp()
 
@@ -372,6 +460,8 @@ def get_all_statuses():
         live_results = []
         live_cids = set()
         for cid, state in call_states.items():
+            if user_id is not None and state.get("user_id") != user_id:
+                continue
             ring_duration = None
             if state.get("ring_start"):
                 end = state.get("ring_end") or now_ts
@@ -397,7 +487,7 @@ def get_all_statuses():
             live_cids.add(cid)
 
     cutoff = (now - timedelta(days=7)).strftime("%Y-%m-%dT%H:%M:%S")
-    history = get_call_history(start_date=cutoff)
+    history = get_call_history(start_date=cutoff, user_id=user_id)
 
     history_results = []
     for entry in history:
@@ -434,39 +524,36 @@ def get_all_statuses():
 
 # ── DNC (Do Not Call) List ──────────────────────────────────────────────────
 
-DNC_FILE = os.path.join(LOGS_DIR, "dnc_list.json")
-
-def _load_dnc_list():
-    """Load DNC list from file."""
+def _load_dnc_list(user_id=None):
+    dnc_file = _user_file(user_id, "dnc_list.json")
     try:
-        if os.path.exists(DNC_FILE):
-            with open(DNC_FILE, "r") as f:
+        if os.path.exists(dnc_file):
+            with open(dnc_file, "r") as f:
                 return json.load(f)
     except Exception:
         pass
     return []
 
-def _save_dnc_list(dnc):
-    """Save DNC list to file."""
-    os.makedirs(LOGS_DIR, exist_ok=True)
+def _save_dnc_list(dnc, user_id=None):
+    d = _user_logs_dir(user_id)
+    os.makedirs(d, exist_ok=True)
+    dnc_file = _user_file(user_id, "dnc_list.json")
     try:
-        with open(DNC_FILE, "w") as f:
+        with open(dnc_file, "w") as f:
             json.dump(dnc, f, indent=2)
     except Exception:
         pass
 
-def get_dnc_list():
-    """Get all DNC numbers."""
+def get_dnc_list(user_id=None):
     with _file_lock:
-        return _load_dnc_list()
+        return _load_dnc_list(user_id)
 
-def add_to_dnc(number, reason="manual"):
-    """Add a number to DNC list. Returns True if added, False if already exists."""
+def add_to_dnc(number, reason="manual", user_id=None):
     number = number.strip()
     if not number:
         return False
     with _file_lock:
-        dnc = _load_dnc_list()
+        dnc = _load_dnc_list(user_id)
         existing_numbers = [entry["number"] for entry in dnc]
         if number in existing_numbers:
             return False
@@ -475,38 +562,34 @@ def add_to_dnc(number, reason="manual"):
             "reason": reason,
             "added_at": datetime.utcnow().isoformat()
         })
-        _save_dnc_list(dnc)
+        _save_dnc_list(dnc, user_id)
         return True
 
-def remove_from_dnc(number):
-    """Remove a number from DNC list."""
+def remove_from_dnc(number, user_id=None):
     number = number.strip()
     with _file_lock:
-        dnc = _load_dnc_list()
+        dnc = _load_dnc_list(user_id)
         updated = [entry for entry in dnc if entry["number"] != number]
         if len(updated) < len(dnc):
-            _save_dnc_list(updated)
+            _save_dnc_list(updated, user_id)
             return True
         return False
 
-def is_dnc(number):
-    """Check if a number is on the DNC list."""
+def is_dnc(number, user_id=None):
     number = number.strip()
     with _file_lock:
-        dnc = _load_dnc_list()
+        dnc = _load_dnc_list(user_id)
         return number in [entry["number"] for entry in dnc]
 
-def clear_dnc_list():
-    """Clear the entire DNC list."""
+def clear_dnc_list(user_id=None):
     with _file_lock:
-        _save_dnc_list([])
+        _save_dnc_list([], user_id)
 
 
 # ── Call Analytics ──────────────────────────────────────────────────────────
 
-def get_analytics():
-    """Compute analytics from call history."""
-    history = get_call_history()
+def get_analytics(user_id=None):
+    history = get_call_history(user_id=user_id)
 
     total_calls = len(history)
     if total_calls == 0:
@@ -531,7 +614,6 @@ def get_analytics():
     ring_durations = [h["ring_duration"] for h in history if h.get("ring_duration") is not None and h["ring_duration"] > 0]
     avg_ring = round(sum(ring_durations) / len(ring_durations), 1) if ring_durations else 0
 
-    # AMD breakdown
     amd_counts = {"human": 0, "machine": 0, "fax": 0, "not_sure": 0, "timeout": 0, "unknown": 0}
     for h in history:
         result = h.get("amd_result", "unknown") or "unknown"
@@ -540,7 +622,6 @@ def get_analytics():
         else:
             amd_counts["unknown"] += 1
 
-    # Hourly distribution (best times to call)
     hourly = {str(h): 0 for h in range(24)}
     hourly_success = {str(h): 0 for h in range(24)}
     for h in history:
@@ -551,7 +632,6 @@ def get_analytics():
             if h.get("transferred") or h.get("voicemail_dropped"):
                 hourly_success[hour_key] = hourly_success.get(hour_key, 0) + 1
 
-    # Daily distribution (last 7 days)
     daily = {}
     for h in history:
         ts = _parse_ts(h.get("timestamp", ""))
@@ -563,19 +643,16 @@ def get_analytics():
             if h.get("transferred") or h.get("voicemail_dropped"):
                 daily[day_key]["success"] += 1
 
-    # Status breakdown
     status_counts = {}
     for h in history:
         desc = h.get("status_description", h.get("status", "unknown"))
         status_counts[desc] = status_counts.get(desc, 0) + 1
 
-    # Hangup cause breakdown
     hangup_counts = {}
     for h in history:
         cause = h.get("hangup_cause", "unknown") or "unknown"
         hangup_counts[cause] = hangup_counts.get(cause, 0) + 1
 
-    # Recent success trend (last 10 groups of 5 calls)
     trend = []
     chunk_size = max(1, total_calls // 10) if total_calls >= 10 else total_calls
     sorted_history = sorted(history, key=lambda x: x.get("timestamp", ""))
@@ -604,46 +681,44 @@ def get_analytics():
 
 # ── Campaign Scheduling ────────────────────────────────────────────────────
 
-SCHEDULE_FILE = os.path.join(LOGS_DIR, "scheduled_campaigns.json")
-
-def _load_schedules():
+def _load_schedules(user_id=None):
+    schedule_file = _user_file(user_id, "scheduled_campaigns.json")
     try:
-        if os.path.exists(SCHEDULE_FILE):
-            with open(SCHEDULE_FILE, "r") as f:
+        if os.path.exists(schedule_file):
+            with open(schedule_file, "r") as f:
                 return json.load(f)
     except Exception:
         pass
     return []
 
-def _save_schedules(schedules):
-    os.makedirs(LOGS_DIR, exist_ok=True)
+def _save_schedules(schedules, user_id=None):
+    d = _user_logs_dir(user_id)
+    os.makedirs(d, exist_ok=True)
+    schedule_file = _user_file(user_id, "scheduled_campaigns.json")
     try:
-        with open(SCHEDULE_FILE, "w") as f:
+        with open(schedule_file, "w") as f:
             json.dump(schedules, f, indent=2)
     except Exception:
         pass
 
-def add_schedule(schedule_data):
-    """Add a scheduled campaign. schedule_data should include: scheduled_time (ISO UTC), numbers, transfer_number, audio_url, dial_mode, batch_size, timezone."""
+def add_schedule(schedule_data, user_id=None):
     import uuid
     schedule_data["id"] = str(uuid.uuid4())[:8]
     schedule_data["status"] = "pending"
     schedule_data["created_at"] = datetime.utcnow().isoformat()
     with _file_lock:
-        schedules = _load_schedules()
+        schedules = _load_schedules(user_id)
         schedules.append(schedule_data)
-        _save_schedules(schedules)
+        _save_schedules(schedules, user_id)
     return schedule_data
 
-def get_schedules():
-    """Get all scheduled campaigns."""
+def get_schedules(user_id=None):
     with _file_lock:
-        return _load_schedules()
+        return _load_schedules(user_id)
 
-def cancel_schedule(schedule_id):
-    """Cancel a scheduled campaign."""
+def cancel_schedule(schedule_id, user_id=None):
     with _file_lock:
-        schedules = _load_schedules()
+        schedules = _load_schedules(user_id)
         updated = []
         found = False
         for s in schedules:
@@ -652,24 +727,22 @@ def cancel_schedule(schedule_id):
                 found = True
             updated.append(s)
         if found:
-            _save_schedules(updated)
+            _save_schedules(updated, user_id)
         return found
 
-def mark_schedule_executed(schedule_id):
-    """Mark a scheduled campaign as executed."""
+def mark_schedule_executed(schedule_id, user_id=None):
     with _file_lock:
-        schedules = _load_schedules()
+        schedules = _load_schedules(user_id)
         for s in schedules:
             if s.get("id") == schedule_id:
                 s["status"] = "executed"
                 s["executed_at"] = datetime.utcnow().isoformat()
-        _save_schedules(schedules)
+        _save_schedules(schedules, user_id)
 
-def get_due_schedules():
-    """Get schedules that are due to execute (scheduled_time <= now and status is pending)."""
+def get_due_schedules(user_id=None):
     now = datetime.utcnow()
     with _file_lock:
-        schedules = _load_schedules()
+        schedules = _load_schedules(user_id)
         due = []
         for s in schedules:
             if s.get("status") != "pending":
@@ -679,13 +752,12 @@ def get_due_schedules():
                 due.append(s)
         return due
 
-def delete_schedule(schedule_id):
-    """Delete a scheduled campaign entirely."""
+def delete_schedule(schedule_id, user_id=None):
     with _file_lock:
-        schedules = _load_schedules()
+        schedules = _load_schedules(user_id)
         updated = [s for s in schedules if s.get("id") != schedule_id]
         if len(updated) < len(schedules):
-            _save_schedules(updated)
+            _save_schedules(updated, user_id)
             return True
         return False
 
@@ -747,26 +819,27 @@ def get_webhook_stats():
 
 # ── Voicemail Templates ──────────────────────────────────────────────────
 
-VM_TEMPLATES_FILE = os.path.join(LOGS_DIR, "vm_templates.json")
-
-def _load_vm_templates():
+def _load_vm_templates(user_id=None):
+    vm_file = _user_file(user_id, "vm_templates.json")
     try:
-        if os.path.exists(VM_TEMPLATES_FILE):
-            with open(VM_TEMPLATES_FILE, "r") as f:
+        if os.path.exists(vm_file):
+            with open(vm_file, "r") as f:
                 return json.load(f)
     except Exception:
         pass
     return []
 
-def _save_vm_templates(templates):
-    os.makedirs(LOGS_DIR, exist_ok=True)
+def _save_vm_templates(templates, user_id=None):
+    d = _user_logs_dir(user_id)
+    os.makedirs(d, exist_ok=True)
+    vm_file = _user_file(user_id, "vm_templates.json")
     try:
-        with open(VM_TEMPLATES_FILE, "w") as f:
+        with open(vm_file, "w") as f:
             json.dump(templates, f, indent=2)
     except Exception:
         pass
 
-def save_vm_template(data):
+def save_vm_template(data, user_id=None):
     import uuid
     template = {
         "id": str(uuid.uuid4())[:8],
@@ -777,18 +850,18 @@ def save_vm_template(data):
         "last_used": None,
     }
     with _file_lock:
-        templates = _load_vm_templates()
+        templates = _load_vm_templates(user_id)
         templates.append(template)
-        _save_vm_templates(templates)
+        _save_vm_templates(templates, user_id)
     return template
 
-def get_vm_templates():
+def get_vm_templates(user_id=None):
     with _file_lock:
-        return _load_vm_templates()
+        return _load_vm_templates(user_id)
 
-def update_vm_template(template_id, data):
+def update_vm_template(template_id, data, user_id=None):
     with _file_lock:
-        templates = _load_vm_templates()
+        templates = _load_vm_templates(user_id)
         for t in templates:
             if t.get("id") == template_id:
                 if "name" in data:
@@ -797,52 +870,53 @@ def update_vm_template(template_id, data):
                     t["type"] = data["type"]
                 if "content" in data:
                     t["content"] = data["content"]
-                _save_vm_templates(templates)
+                _save_vm_templates(templates, user_id)
                 return t
     return None
 
-def delete_vm_template(template_id):
+def delete_vm_template(template_id, user_id=None):
     with _file_lock:
-        templates = _load_vm_templates()
+        templates = _load_vm_templates(user_id)
         updated = [t for t in templates if t.get("id") != template_id]
         if len(updated) < len(templates):
-            _save_vm_templates(updated)
+            _save_vm_templates(updated, user_id)
             return True
         return False
 
-def mark_vm_template_used(template_id):
+def mark_vm_template_used(template_id, user_id=None):
     with _file_lock:
-        templates = _load_vm_templates()
+        templates = _load_vm_templates(user_id)
         for t in templates:
             if t.get("id") == template_id:
                 t["last_used"] = datetime.utcnow().isoformat()
-                _save_vm_templates(templates)
+                _save_vm_templates(templates, user_id)
                 return True
     return False
 
 
 # ── Campaign Templates ────────────────────────────────────────────────────
 
-TEMPLATES_FILE = os.path.join(LOGS_DIR, "campaign_templates.json")
-
-def _load_templates():
+def _load_templates(user_id=None):
+    templates_file = _user_file(user_id, "campaign_templates.json")
     try:
-        if os.path.exists(TEMPLATES_FILE):
-            with open(TEMPLATES_FILE, "r") as f:
+        if os.path.exists(templates_file):
+            with open(templates_file, "r") as f:
                 return json.load(f)
     except Exception:
         pass
     return []
 
-def _save_templates(templates):
-    os.makedirs(LOGS_DIR, exist_ok=True)
+def _save_templates(templates, user_id=None):
+    d = _user_logs_dir(user_id)
+    os.makedirs(d, exist_ok=True)
+    templates_file = _user_file(user_id, "campaign_templates.json")
     try:
-        with open(TEMPLATES_FILE, "w") as f:
+        with open(templates_file, "w") as f:
             json.dump(templates, f, indent=2)
     except Exception:
         pass
 
-def save_template(name, config):
+def save_template(name, config, user_id=None):
     import uuid
     template = {
         "id": str(uuid.uuid4())[:8],
@@ -855,28 +929,28 @@ def save_template(name, config):
         "created_at": datetime.utcnow().isoformat(),
     }
     with _file_lock:
-        templates = _load_templates()
+        templates = _load_templates(user_id)
         templates.append(template)
-        _save_templates(templates)
+        _save_templates(templates, user_id)
     return template
 
-def get_templates():
+def get_templates(user_id=None):
     with _file_lock:
-        return _load_templates()
+        return _load_templates(user_id)
 
-def delete_template(template_id):
+def delete_template(template_id, user_id=None):
     with _file_lock:
-        templates = _load_templates()
+        templates = _load_templates(user_id)
         updated = [t for t in templates if t.get("id") != template_id]
         if len(updated) < len(templates):
-            _save_templates(updated)
+            _save_templates(updated, user_id)
             return True
         return False
 
 
 # ── Number Validation ─────────────────────────────────────────────────────
 
-def validate_phone_numbers(numbers_text):
+def validate_phone_numbers(numbers_text, user_id=None):
     lines = [l.strip() for l in numbers_text.strip().split("\n") if l.strip()]
     results = {
         "valid": [],
@@ -886,7 +960,7 @@ def validate_phone_numbers(numbers_text):
         "total_input": len(lines),
     }
     seen = set()
-    dnc = get_dnc_list()
+    dnc = get_dnc_list(user_id)
     dnc_numbers = set()
     for d in dnc:
         n = d.get("number", "").lstrip("+").replace("-", "").replace(" ", "").replace("(", "").replace(")", "")
@@ -962,7 +1036,7 @@ def is_valid_phone_number(number):
     return True, "Valid"
 
 
-def log_invalid_number(number, reason, campaign_name=""):
+def log_invalid_number(number, reason, campaign_name="", user_id=None):
     entry = {
         "call_id": f"invalid_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}_{number}",
         "timestamp": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S"),
@@ -984,18 +1058,18 @@ def log_invalid_number(number, reason, campaign_name=""):
     }
     cutoff_dt = datetime.utcnow() - timedelta(days=7)
     with _file_lock:
-        history = _load_call_history()
+        history = _load_call_history(user_id)
         history.append(entry)
         cleaned = []
         for h in history:
             h_dt = _parse_ts(h.get("timestamp", ""))
             if h_dt is None or h_dt >= cutoff_dt:
                 cleaned.append(h)
-        _save_call_history(cleaned)
+        _save_call_history(cleaned, user_id)
     return entry
 
 
-def log_unreachable_number(number, reason, carrier=None, line_type=None, campaign_name=""):
+def log_unreachable_number(number, reason, carrier=None, line_type=None, campaign_name="", user_id=None):
     entry = {
         "call_id": f"unreachable_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}_{number}",
         "timestamp": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S"),
@@ -1019,20 +1093,20 @@ def log_unreachable_number(number, reason, carrier=None, line_type=None, campaig
     }
     cutoff_dt = datetime.utcnow() - timedelta(days=7)
     with _file_lock:
-        history = _load_call_history()
+        history = _load_call_history(user_id)
         history.append(entry)
         cleaned = []
         for h in history:
             h_dt = _parse_ts(h.get("timestamp", ""))
             if h_dt is None or h_dt >= cutoff_dt:
                 cleaned.append(h)
-        _save_call_history(cleaned)
+        _save_call_history(cleaned, user_id)
     return entry
 
 
 def get_unreachable_numbers(hours=24):
-    cutoff = (datetime.utcnow() - timedelta(hours=hours)).strftime("%Y-%m-%dT%H:%M:%S")
     history = _load_call_history()
+    cutoff = (datetime.utcnow() - timedelta(hours=hours)).strftime("%Y-%m-%dT%H:%M:%S")
     unreachable = []
     for entry in history:
         if entry.get("hangup_cause") == "NUMBER_UNREACHABLE" and entry.get("status") == "skipped":
@@ -1043,8 +1117,8 @@ def get_unreachable_numbers(hours=24):
 
 
 def get_invalid_numbers(hours=24):
-    cutoff = (datetime.utcnow() - timedelta(hours=hours)).strftime("%Y-%m-%dT%H:%M:%S")
     history = _load_call_history()
+    cutoff = (datetime.utcnow() - timedelta(hours=hours)).strftime("%Y-%m-%dT%H:%M:%S")
     invalid = []
     for entry in history:
         if entry.get("hangup_cause") == "INVALID_NUMBER_FORMAT" and entry.get("status") == "skipped":
@@ -1056,12 +1130,11 @@ def get_invalid_numbers(hours=24):
 
 # ── Email Report Settings ─────────────────────────────────────────────────
 
-REPORT_SETTINGS_FILE = os.path.join(LOGS_DIR, "report_settings.json")
-
-def get_report_settings():
+def get_report_settings(user_id=None):
+    report_file = _user_file(user_id, "report_settings.json")
     try:
-        if os.path.exists(REPORT_SETTINGS_FILE):
-            with open(REPORT_SETTINGS_FILE, "r") as f:
+        if os.path.exists(report_file):
+            with open(report_file, "r") as f:
                 return json.load(f)
     except Exception:
         pass
@@ -1072,27 +1145,29 @@ def get_report_settings():
         "last_sent": None,
     }
 
-def save_report_settings(settings):
-    os.makedirs(LOGS_DIR, exist_ok=True)
-    current = get_report_settings()
+def save_report_settings(settings, user_id=None):
+    d = _user_logs_dir(user_id)
+    os.makedirs(d, exist_ok=True)
+    current = get_report_settings(user_id)
     current.update(settings)
     current["updated_at"] = datetime.utcnow().isoformat()
+    report_file = _user_file(user_id, "report_settings.json")
     try:
-        with open(REPORT_SETTINGS_FILE, "w") as f:
+        with open(report_file, "w") as f:
             json.dump(current, f, indent=2)
     except Exception:
         pass
     return current
 
-def mark_report_sent():
-    settings = get_report_settings()
+def mark_report_sent(user_id=None):
+    settings = get_report_settings(user_id)
     settings["last_sent"] = datetime.utcnow().isoformat()
-    save_report_settings(settings)
+    save_report_settings(settings, user_id)
     return settings
 
 
-def get_campaign_history_summary():
-    history = get_call_history()
+def get_campaign_history_summary(user_id=None):
+    history = get_call_history(user_id=user_id)
     if not history:
         return []
 
@@ -1119,21 +1194,22 @@ def get_campaign_history_summary():
 
 # ── Contact List Management ──────────────────────────────────────────────
 
-CONTACTS_FILE = os.path.join(LOGS_DIR, "contacts.json")
-
-def _load_contacts():
+def _load_contacts(user_id=None):
+    contacts_file = _user_file(user_id, "contacts.json")
     try:
-        if os.path.exists(CONTACTS_FILE):
-            with open(CONTACTS_FILE, "r") as f:
+        if os.path.exists(contacts_file):
+            with open(contacts_file, "r") as f:
                 return json.load(f)
     except Exception:
         pass
     return []
 
-def _save_contacts(contacts):
-    os.makedirs(LOGS_DIR, exist_ok=True)
+def _save_contacts(contacts, user_id=None):
+    d = _user_logs_dir(user_id)
+    os.makedirs(d, exist_ok=True)
+    contacts_file = _user_file(user_id, "contacts.json")
     try:
-        with open(CONTACTS_FILE, "w") as f:
+        with open(contacts_file, "w") as f:
             json.dump(contacts, f, indent=2)
     except Exception:
         pass
@@ -1149,19 +1225,19 @@ def _normalize_phone(number):
             digits = "+" + digits
     return digits
 
-def get_contacts(tag=None, group=None):
+def get_contacts(tag=None, group=None, user_id=None):
     with _file_lock:
-        contacts = _load_contacts()
+        contacts = _load_contacts(user_id)
     if tag:
         contacts = [c for c in contacts if tag in c.get("tags", [])]
     if group:
         contacts = [c for c in contacts if c.get("group", "") == group]
     return contacts
 
-def add_contacts(new_contacts, group="", tags=None):
+def add_contacts(new_contacts, group="", tags=None, user_id=None):
     import uuid
     with _file_lock:
-        existing = _load_contacts()
+        existing = _load_contacts(user_id)
         existing_phones = {}
         for c in existing:
             existing_phones[c.get("phone_normalized", "")] = c
@@ -1197,33 +1273,33 @@ def add_contacts(new_contacts, group="", tags=None):
             existing_phones[normalized] = contact
             added += 1
 
-        _save_contacts(existing)
+        _save_contacts(existing, user_id)
         return {"added": added, "duplicates": duplicates, "total": len(existing)}
 
-def update_contact(contact_id, updates):
+def update_contact(contact_id, updates, user_id=None):
     with _file_lock:
-        contacts = _load_contacts()
+        contacts = _load_contacts(user_id)
         for c in contacts:
             if c.get("id") == contact_id:
                 for key in ("first_name", "last_name", "email", "company", "group", "tags"):
                     if key in updates:
                         c[key] = updates[key]
-                _save_contacts(contacts)
+                _save_contacts(contacts, user_id)
                 return c
     return None
 
-def delete_contacts(contact_ids):
+def delete_contacts(contact_ids, user_id=None):
     with _file_lock:
-        contacts = _load_contacts()
+        contacts = _load_contacts(user_id)
         id_set = set(contact_ids)
         updated = [c for c in contacts if c.get("id") not in id_set]
         removed = len(contacts) - len(updated)
-        _save_contacts(updated)
+        _save_contacts(updated, user_id)
         return removed
 
-def get_contact_groups():
+def get_contact_groups(user_id=None):
     with _file_lock:
-        contacts = _load_contacts()
+        contacts = _load_contacts(user_id)
     groups = {}
     for c in contacts:
         g = c.get("group", "") or "Ungrouped"
@@ -1232,30 +1308,30 @@ def get_contact_groups():
         groups[g] += 1
     return groups
 
-def get_contact_tags():
+def get_contact_tags(user_id=None):
     with _file_lock:
-        contacts = _load_contacts()
+        contacts = _load_contacts(user_id)
     tags = {}
     for c in contacts:
         for t in c.get("tags", []):
             tags[t] = tags.get(t, 0) + 1
     return tags
 
-def record_contact_called(phone, result):
+def record_contact_called(phone, result, user_id=None):
     normalized = _normalize_phone(phone)
     with _file_lock:
-        contacts = _load_contacts()
+        contacts = _load_contacts(user_id)
         for c in contacts:
             if c.get("phone_normalized", "") == normalized:
                 c["call_count"] = c.get("call_count", 0) + 1
                 c["last_called"] = datetime.utcnow().isoformat()
                 c["last_result"] = result
                 break
-        _save_contacts(contacts)
+        _save_contacts(contacts, user_id)
 
-def clear_contacts():
+def clear_contacts(user_id=None):
     with _file_lock:
-        _save_contacts([])
+        _save_contacts([], user_id)
 
 
 # ── Call Recording URLs ──────────────────────────────────────────────────

@@ -79,6 +79,7 @@ from storage import (
     record_contact_called,
     clear_contacts,
     store_recording_url,
+    get_user_for_call,
 )
 from telnyx_client import (
     transfer_call, play_audio, hangup_call, make_call, validate_connection_id,
@@ -538,7 +539,7 @@ def start():
             valid_numbers.append(num)
         else:
             invalid_count += 1
-            log_invalid_number(num, reason)
+            log_invalid_number(num, reason, user_id=current_user.id)
             logger.info(f"Skipping invalid number: {num} ({reason})")
 
     if not valid_numbers:
@@ -564,6 +565,7 @@ def start():
                     entry.get("reason", "Unreachable"),
                     carrier=entry.get("carrier"),
                     line_type=entry.get("line_type"),
+                    user_id=current_user.id,
                 )
                 logger.info(f"Skipping unreachable number: {entry.get('phone_number', '')} ({entry.get('reason', 'Unreachable')})")
 
@@ -603,7 +605,7 @@ def start():
         audio_url = audio_url_input
         logger.info(f"Using provided audio URL: {audio_url}")
     else:
-        audio_url = get_voicemail_url()
+        audio_url = get_voicemail_url(user_id=current_user.id)
         logger.info(f"Using stored voicemail URL: {audio_url}")
 
     if not transfer_number:
@@ -629,7 +631,7 @@ def start():
 
     # ---- Start the campaign ----
     logger.info(f"Starting campaign: {len(numbers)} numbers, transfer to {transfer_number}, mode={dial_mode}, batch={batch_size}, delay={dial_delay}min, vm_type={voicemail_type}, from={campaign_from_number or 'default'}")
-    set_campaign(audio_url, transfer_number, numbers, dial_mode=dial_mode, batch_size=batch_size, dial_delay=dial_delay, from_number=campaign_from_number)
+    set_campaign(audio_url, transfer_number, numbers, dial_mode=dial_mode, batch_size=batch_size, dial_delay=dial_delay, from_number=campaign_from_number, user_id=current_user.id)
 
     if voicemail_type == "personalized":
         pvm_template_id = request.form.get("pvm_template_id", "").strip()
@@ -639,11 +641,11 @@ def start():
 
         if pvm_template_id:
             from storage import get_vm_templates as _gvt
-            templates = _gvt()
+            templates = _gvt(user_id=current_user.id)
             for t in templates:
                 if t.get("id") == pvm_template_id and t.get("type") == "script":
                     pvm_script = t.get("content", "")
-                    mark_vm_template_used(pvm_template_id)
+                    mark_vm_template_used(pvm_template_id, user_id=current_user.id)
                     break
 
         if not pvm_script:
@@ -652,7 +654,7 @@ def start():
         if not pvm_script:
             return jsonify({"error": "No personalized voicemail script template selected"}), 400
         if not pvm_voice_id:
-            preset = get_voice_preset()
+            preset = get_voice_preset(user_id=current_user.id)
             pvm_voice_id = preset.get("voice_id", "")
         if not pvm_voice_id:
             return jsonify({"error": "No voice selected for personalized voicemail"}), 400
@@ -687,7 +689,7 @@ def start():
                 return jsonify({"error": f"Failed to start PVM generation: {msg}"}), 400
             logger.info(f"PVM generation started for {len(contacts)} contacts during campaign launch")
 
-    start_dialer()
+    start_dialer(user_id=current_user.id)
 
     response_data = {
         "message": f"Campaign started with {len(numbers)} numbers",
@@ -717,19 +719,19 @@ def test_call():
         return jsonify({"error": "No phone number provided"}), 400
 
     transfer_number = request.form.get("transfer_number", "").strip()
-    vm_url = get_voicemail_url()
-    camp = get_campaign()
+    vm_url = get_voicemail_url(user_id=current_user.id)
+    camp = get_campaign(user_id=current_user.id)
     transfer_num = transfer_number or camp.get("transfer_number") or ""
     if not transfer_num:
         return jsonify({"error": "Transfer number is required for test calls"}), 400
     audio = camp.get("audio_url") or vm_url
-    set_campaign(audio, transfer_num, [number], dial_mode="sequential", batch_size=1)
+    set_campaign(audio, transfer_num, [number], dial_mode="sequential", batch_size=1, user_id=current_user.id)
 
     logger.info(f"Placing test call to {number}")
     call_control_id = make_call(number)
 
     if call_control_id:
-        create_call_state(call_control_id, number)
+        create_call_state(call_control_id, number, user_id=current_user.id)
         update_call_state(call_control_id, status="test_call_ringing",
                           status_description="Ringing", status_color="blue")
         logger.info(f"Test call placed successfully to {number}")
@@ -744,8 +746,8 @@ def test_call():
 @login_required
 def stop():
     """Stop the current campaign. Active calls will finish but no new calls are placed."""
-    stop_campaign()
-    resume_after_transfer()
+    stop_campaign(user_id=current_user.id)
+    resume_after_transfer(user_id=current_user.id)
     logger.info("Campaign stopped by user")
     return jsonify({"message": "Campaign stopped"})
 
@@ -755,14 +757,14 @@ def stop():
 @login_required
 def status():
     """Return current call statuses and campaign info for the dashboard."""
-    camp = get_campaign()
+    camp = get_campaign(user_id=current_user.id)
     return jsonify({
         "active": camp["active"],
         "stop_requested": camp["stop_requested"],
         "total": len(camp["numbers"]),
         "dialed_count": camp["dialed_count"],
-        "transfer_paused": is_transfer_paused(),
-        "calls": get_all_statuses(),
+        "transfer_paused": is_transfer_paused(user_id=current_user.id),
+        "calls": get_all_statuses(user_id=current_user.id),
     })
 
 
@@ -770,7 +772,7 @@ def status():
 @app.route("/api/voicemail_settings", methods=["GET"])
 @login_required
 def get_vm_settings():
-    url = get_voicemail_url()
+    url = get_voicemail_url(user_id=current_user.id)
     return jsonify({"voicemail_url": url})
 
 
@@ -783,7 +785,7 @@ def save_vm_settings():
         return jsonify({"error": "Voicemail URL is required"}), 400
     if not url.startswith(("http://", "https://")):
         return jsonify({"error": "URL must start with http:// or https://"}), 400
-    save_voicemail_url(url)
+    save_voicemail_url(url, user_id=current_user.id)
     logger.info(f"Voicemail URL updated: {url}")
     return jsonify({"message": "Voicemail URL saved", "voicemail_url": url})
 
@@ -791,7 +793,7 @@ def save_vm_settings():
 @app.route("/api/voice-preset", methods=["GET"])
 @login_required
 def get_voice_preset_api():
-    preset = get_voice_preset()
+    preset = get_voice_preset(user_id=current_user.id)
     return jsonify({"preset": preset})
 
 @app.route("/api/voice-preset", methods=["POST"])
@@ -808,7 +810,7 @@ def save_voice_preset_api():
         "humanize": data.get("humanize", True),
         "speaker_boost": data.get("speaker_boost", True),
     }
-    save_voice_preset(preset)
+    save_voice_preset(preset, user_id=current_user.id)
     logger.info(f"Voice preset saved: {preset.get('voice_id')}")
     return jsonify({"message": "Voice preset saved", "preset": preset})
 
@@ -818,11 +820,11 @@ def save_voice_preset_api():
 @login_required
 def clear_logs():
     from storage import clear_call_states
-    camp = get_campaign()
+    camp = get_campaign(user_id=current_user.id)
     if camp.get("active"):
         return jsonify({"error": "Cannot clear logs while campaign is active"}), 400
     clear_call_states()
-    clear_call_history()
+    clear_call_history(user_id=current_user.id)
     logger.info("Call logs cleared by user")
     return jsonify({"message": "Call logs cleared"})
 
@@ -835,7 +837,7 @@ def download_report():
     start_date = request.args.get("start", "")
     end_date = request.args.get("end", "")
 
-    history = get_call_history(start_date=start_date or None, end_date=end_date or None)
+    history = get_call_history(start_date=start_date or None, end_date=end_date or None, user_id=current_user.id)
 
     output = io.StringIO()
     writer = csv.writer(output)
@@ -880,7 +882,7 @@ def download_report():
 @app.route("/api/dnc", methods=["GET"])
 @login_required
 def api_dnc_list():
-    return jsonify({"dnc": get_dnc_list()})
+    return jsonify({"dnc": get_dnc_list(user_id=current_user.id)})
 
 
 @app.route("/api/dnc", methods=["POST"])
@@ -891,7 +893,7 @@ def api_dnc_add():
     reason = data.get("reason", "manual")
     if not number:
         return jsonify({"error": "Phone number is required"}), 400
-    if add_to_dnc(number, reason):
+    if add_to_dnc(number, reason, user_id=current_user.id):
         logger.info(f"DNC: Added {number} (reason: {reason})")
         return jsonify({"message": f"Added {number} to DNC list"})
     return jsonify({"message": f"{number} is already on the DNC list"})
@@ -904,7 +906,7 @@ def api_dnc_remove():
     number = data.get("number", "").strip()
     if not number:
         return jsonify({"error": "Phone number is required"}), 400
-    if remove_from_dnc(number):
+    if remove_from_dnc(number, user_id=current_user.id):
         logger.info(f"DNC: Removed {number}")
         return jsonify({"message": f"Removed {number} from DNC list"})
     return jsonify({"error": "Number not found in DNC list"}), 404
@@ -914,14 +916,14 @@ def api_dnc_remove():
 @app.route("/api/analytics", methods=["GET"])
 @login_required
 def api_analytics():
-    return jsonify(get_analytics())
+    return jsonify(get_analytics(user_id=current_user.id))
 
 
 # ---- Campaign Scheduling API ----
 @app.route("/api/schedules", methods=["GET"])
 @login_required
 def api_schedules_list():
-    return jsonify({"schedules": get_schedules()})
+    return jsonify({"schedules": get_schedules(user_id=current_user.id)})
 
 
 @app.route("/api/schedules", methods=["POST"])
@@ -950,12 +952,12 @@ def api_schedule_create():
         "scheduled_time": scheduled_time,
         "numbers": numbers,
         "transfer_number": transfer_number,
-        "audio_url": data.get("audio_url", "") or get_voicemail_url(),
+        "audio_url": data.get("audio_url", "") or get_voicemail_url(user_id=current_user.id),
         "dial_mode": dial_mode,
         "batch_size": batch_size,
         "timezone": timezone,
         "total_numbers": len(numbers),
-    })
+    }, user_id=current_user.id)
     logger.info(f"Schedule created: {schedule['id']} for {scheduled_time} with {len(numbers)} numbers")
     return jsonify({"message": "Campaign scheduled", "schedule": schedule})
 
@@ -963,7 +965,7 @@ def api_schedule_create():
 @app.route("/api/schedules/<schedule_id>", methods=["DELETE"])
 @login_required
 def api_schedule_delete(schedule_id):
-    if delete_schedule(schedule_id):
+    if delete_schedule(schedule_id, user_id=current_user.id):
         logger.info(f"Schedule deleted: {schedule_id}")
         return jsonify({"message": "Schedule deleted"})
     return jsonify({"error": "Schedule not found"}), 404
@@ -972,7 +974,7 @@ def api_schedule_delete(schedule_id):
 @app.route("/api/schedules/<schedule_id>/cancel", methods=["POST"])
 @login_required
 def api_schedule_cancel(schedule_id):
-    if cancel_schedule(schedule_id):
+    if cancel_schedule(schedule_id, user_id=current_user.id):
         logger.info(f"Schedule cancelled: {schedule_id}")
         return jsonify({"message": "Schedule cancelled"})
     return jsonify({"error": "Schedule not found"}), 404
@@ -989,7 +991,7 @@ def api_webhook_status():
 @app.route("/api/templates", methods=["GET"])
 @login_required
 def api_templates_list():
-    return jsonify({"templates": get_templates()})
+    return jsonify({"templates": get_templates(user_id=current_user.id)})
 
 
 @app.route("/api/templates", methods=["POST"])
@@ -999,7 +1001,7 @@ def api_template_save():
     name = data.get("name", "").strip()
     if not name:
         return jsonify({"error": "Template name is required"}), 400
-    template = save_template(name, data)
+    template = save_template(name, data, user_id=current_user.id)
     logger.info(f"Template saved: {name} ({template['id']})")
     return jsonify({"template": template})
 
@@ -1007,7 +1009,7 @@ def api_template_save():
 @app.route("/api/templates/<template_id>", methods=["DELETE"])
 @login_required
 def api_template_delete(template_id):
-    if delete_template(template_id):
+    if delete_template(template_id, user_id=current_user.id):
         logger.info(f"Template deleted: {template_id}")
         return jsonify({"message": "Template deleted"})
     return jsonify({"error": "Template not found"}), 404
@@ -1018,7 +1020,7 @@ def api_template_delete(template_id):
 @app.route("/api/vm-templates", methods=["GET"])
 @login_required
 def api_vm_templates_list():
-    return jsonify({"templates": get_vm_templates()})
+    return jsonify({"templates": get_vm_templates(user_id=current_user.id)})
 
 
 @app.route("/api/vm-templates", methods=["POST"])
@@ -1035,10 +1037,10 @@ def api_vm_template_create():
     if not content:
         return jsonify({"error": "Content is required"}), 400
     from storage import get_vm_templates as _get_vmt
-    existing = _get_vmt()
+    existing = _get_vmt(user_id=current_user.id)
     if len(existing) >= 5:
         return jsonify({"error": "Maximum 5 templates allowed. Delete one to create a new one."}), 400
-    template = save_vm_template({"name": name, "type": ttype, "content": content})
+    template = save_vm_template({"name": name, "type": ttype, "content": content}, user_id=current_user.id)
     logger.info(f"VM template created: {name} ({template['id']})")
     return jsonify({"template": template})
 
@@ -1047,7 +1049,7 @@ def api_vm_template_create():
 @login_required
 def api_vm_template_update(template_id):
     data = request.get_json() or {}
-    updated = update_vm_template(template_id, data)
+    updated = update_vm_template(template_id, data, user_id=current_user.id)
     if updated:
         logger.info(f"VM template updated: {template_id}")
         return jsonify({"template": updated})
@@ -1057,7 +1059,7 @@ def api_vm_template_update(template_id):
 @app.route("/api/vm-templates/<template_id>", methods=["DELETE"])
 @login_required
 def api_vm_template_delete(template_id):
-    if delete_vm_template(template_id):
+    if delete_vm_template(template_id, user_id=current_user.id):
         logger.info(f"VM template deleted: {template_id}")
         return jsonify({"message": "Template deleted"})
     return jsonify({"error": "Template not found"}), 404
@@ -1066,7 +1068,7 @@ def api_vm_template_delete(template_id):
 @app.route("/api/vm-templates/<template_id>/use", methods=["POST"])
 @login_required
 def api_vm_template_mark_used(template_id):
-    mark_vm_template_used(template_id)
+    mark_vm_template_used(template_id, user_id=current_user.id)
     return jsonify({"message": "ok"})
 
 
@@ -1078,7 +1080,7 @@ def api_validate_numbers():
     numbers_text = data.get("numbers", "")
     if not numbers_text.strip():
         return jsonify({"error": "No numbers provided"}), 400
-    results = validate_phone_numbers(numbers_text)
+    results = validate_phone_numbers(numbers_text, user_id=current_user.id)
     return jsonify(results)
 
 
@@ -1113,9 +1115,9 @@ def api_lookup_numbers_batch():
 def api_contacts_list():
     tag = request.args.get("tag", "")
     group = request.args.get("group", "")
-    contacts = get_contacts(tag=tag or None, group=group or None)
-    groups = get_contact_groups()
-    tags = get_contact_tags()
+    contacts = get_contacts(tag=tag or None, group=group or None, user_id=current_user.id)
+    groups = get_contact_groups(user_id=current_user.id)
+    tags = get_contact_tags(user_id=current_user.id)
     return jsonify({"contacts": contacts, "groups": groups, "tags": tags, "total": len(contacts)})
 
 
@@ -1130,7 +1132,7 @@ def api_contacts_add():
     if not new_contacts:
         return jsonify({"error": "No contacts provided"}), 400
 
-    result = add_contacts(new_contacts, group=group, tags=tags)
+    result = add_contacts(new_contacts, group=group, tags=tags, user_id=current_user.id)
     logger.info(f"Contacts added: {result['added']} new, {result['duplicates']} duplicates, {result['total']} total")
     return jsonify(result)
 
@@ -1191,7 +1193,7 @@ def api_contacts_import():
     if not contacts:
         return jsonify({"error": "No valid contacts found in CSV"}), 400
 
-    result = add_contacts(contacts, group=group, tags=tags)
+    result = add_contacts(contacts, group=group, tags=tags, user_id=current_user.id)
     logger.info(f"CSV import: {result['added']} new, {result['duplicates']} duplicates")
     return jsonify(result)
 
@@ -1200,7 +1202,7 @@ def api_contacts_import():
 @login_required
 def api_contact_update(contact_id):
     data = request.get_json() or {}
-    updated = update_contact(contact_id, data)
+    updated = update_contact(contact_id, data, user_id=current_user.id)
     if updated:
         return jsonify({"contact": updated})
     return jsonify({"error": "Contact not found"}), 404
@@ -1213,14 +1215,14 @@ def api_contacts_delete():
     ids = data.get("ids", [])
     if not ids:
         return jsonify({"error": "No contact IDs provided"}), 400
-    removed = delete_contacts(ids)
+    removed = delete_contacts(ids, user_id=current_user.id)
     return jsonify({"removed": removed})
 
 
 @app.route("/api/contacts/clear", methods=["POST"])
 @login_required
 def api_contacts_clear():
-    clear_contacts()
+    clear_contacts(user_id=current_user.id)
     return jsonify({"message": "All contacts cleared"})
 
 
@@ -1228,7 +1230,7 @@ def api_contacts_clear():
 @app.route("/api/report-settings", methods=["GET"])
 @login_required
 def api_report_settings_get():
-    settings = get_report_settings()
+    settings = get_report_settings(user_id=current_user.id)
     return jsonify(settings)
 
 
@@ -1253,7 +1255,7 @@ def api_report_settings_save():
         except (ValueError, IndexError):
             return jsonify({"error": "Invalid send time format (use HH:MM)"}), 400
         filtered["send_time"] = send_time
-    settings = save_report_settings(filtered)
+    settings = save_report_settings(filtered, user_id=current_user.id)
     logger.info(f"Report settings updated: enabled={settings.get('enabled')}, recipient={settings.get('recipient_email')}, time={settings.get('send_time')}")
     return jsonify(settings)
 
@@ -1281,7 +1283,7 @@ def api_gmail_status():
 @login_required
 def campaign_history():
     from storage import get_campaign_history_summary
-    return jsonify(get_campaign_history_summary())
+    return jsonify(get_campaign_history_summary(user_id=current_user.id))
 
 
 # ---- Background Scheduler Thread ----
@@ -1510,7 +1512,8 @@ def webhook():
 
     state = get_call_state(call_control_id)
 
-    camp = get_campaign()
+    webhook_user_id = get_user_for_call(call_control_id)
+    camp = get_campaign(user_id=webhook_user_id)
     transfer_num = camp.get("transfer_number", "")
     is_transfer_leg = False
     if not state and call_control_id and call_number:
@@ -1520,7 +1523,7 @@ def webhook():
             is_transfer_leg = True
             logger.info(f"Transfer leg detected: {call_control_id} to {to_number} (transfer number: {transfer_num})")
         else:
-            create_call_state(call_control_id, call_number)
+            create_call_state(call_control_id, call_number, user_id=webhook_user_id)
             logger.info(f"Auto-created call state for {call_number} (webhook arrived before state)")
 
     if is_transfer_leg or (state and state.get("is_transfer_leg")):
@@ -1537,7 +1540,7 @@ def webhook():
                 if cid_state.get("transferred") and is_active_transfer(cid_key):
                     update_call_state(cid_key, status="transferred",
                                       status_description="Transfer call ended", status_color="green")
-                    resume_after_transfer(cid_key)
+                    resume_after_transfer(cid_key, user_id=get_user_for_call(cid_key))
                     signal_call_complete(cid_key)
                     logger.info(f"Resumed campaign after transfer leg hangup for {cid_key}")
         return "", 200
@@ -1579,14 +1582,14 @@ def webhook():
                 logger.warning(f"AMD timeout on {ccid}, treating as HUMAN and transferring")
                 update_call_state(ccid, machine_detected=False, status="human_detected", amd_received=True,
                                   amd_result="timeout", status_description="AMD detection timeout", status_color="yellow")
-                camp = get_campaign()
+                camp = get_campaign(user_id=get_user_for_call(ccid))
                 transfer_num = camp.get("transfer_number", "")
                 customer_num = state.get("number", "")
                 if transfer_num and mark_transferred(ccid):
                     logger.info(f"Fallback transfer {ccid} to {transfer_num} (caller ID: {customer_num})")
                     success = transfer_call(ccid, transfer_num, customer_number=customer_num)
                     if success:
-                        pause_for_transfer(ccid)
+                        pause_for_transfer(ccid, user_id=get_user_for_call(ccid))
                         logger.info(f"Campaign paused for transfer on {ccid}")
                         update_call_state(ccid, status="transferred",
                                           status_description="Answered by human - transferred (campaign paused)", status_color="green")
@@ -1630,14 +1633,14 @@ def webhook():
         if result == "human":
             update_call_state(call_control_id, machine_detected=False, status="human_detected",
                               amd_result="human", status_description="Human detected", status_color="blue")
-            camp = get_campaign()
+            camp = get_campaign(user_id=webhook_user_id)
             transfer_num = camp.get("transfer_number", "")
             customer_num = (get_call_state(call_control_id) or {}).get("number", "")
             if transfer_num and mark_transferred(call_control_id):
                 logger.info(f"HUMAN detected - transferring {call_control_id} to {transfer_num} (caller ID: {customer_num})")
                 success = transfer_call(call_control_id, transfer_num, customer_number=customer_num)
                 if success:
-                    pause_for_transfer(call_control_id)
+                    pause_for_transfer(call_control_id, user_id=webhook_user_id)
                     logger.info(f"Campaign paused for transfer on {call_control_id}")
                     update_call_state(call_control_id, status="transferred",
                                       status_description="Answered by human - transferred (campaign paused)", status_color="green")
@@ -1665,11 +1668,11 @@ def webhook():
 
             if mark_voicemail_dropped(call_control_id):
                 update_call_state(call_control_id, status_description="Dropping voicemail...", status_color="blue")
-                camp = get_campaign()
+                camp = get_campaign(user_id=webhook_user_id)
                 state = get_call_state(call_control_id)
                 customer_number = (state or {}).get("number", "")
                 personalized_url = get_personalized_audio_url(customer_number) if customer_number else None
-                audio_url = personalized_url or camp.get("audio_url", "") or get_voicemail_url()
+                audio_url = personalized_url or camp.get("audio_url", "") or get_voicemail_url(user_id=webhook_user_id)
                 if personalized_url:
                     logger.info(f"Using PERSONALIZED voicemail for {customer_number} on {call_control_id}")
                     update_call_state(call_control_id, status_description="Dropping personalized voicemail...", status_color="blue")
@@ -1696,14 +1699,14 @@ def webhook():
         elif result == "not_sure":
             update_call_state(call_control_id, machine_detected=False, status="human_detected",
                               amd_result="not_sure", status_description="Detection unclear - treating as human", status_color="yellow")
-            camp = get_campaign()
+            camp = get_campaign(user_id=webhook_user_id)
             transfer_num = camp.get("transfer_number", "")
             customer_num = (get_call_state(call_control_id) or {}).get("number", "")
             if transfer_num and mark_transferred(call_control_id):
                 logger.info(f"AMD not_sure on {call_control_id}, treating as HUMAN - transferring to {transfer_num} (caller ID: {customer_num})")
                 success = transfer_call(call_control_id, transfer_num, customer_number=customer_num)
                 if success:
-                    pause_for_transfer(call_control_id)
+                    pause_for_transfer(call_control_id, user_id=webhook_user_id)
                     logger.info(f"Campaign paused for transfer on {call_control_id}")
                     update_call_state(call_control_id, status="transferred",
                                       status_description="Answered by human - transferred (campaign paused)", status_color="green")
@@ -1733,10 +1736,10 @@ def webhook():
         logger.info(f"Voicemail greeting ended on {call_control_id}, result: {beep_result}")
 
         if state.get("voicemail_dropped"):
-            camp = get_campaign()
+            camp = get_campaign(user_id=get_user_for_call(call_control_id))
             customer_number = state.get("number", "")
             personalized_url = get_personalized_audio_url(customer_number) if customer_number else None
-            audio_url = personalized_url or camp.get("audio_url", "") or get_voicemail_url()
+            audio_url = personalized_url or camp.get("audio_url", "") or get_voicemail_url(user_id=get_user_for_call(call_control_id))
             if audio_url and beep_result == "beep_detected":
                 logger.info(f"Beep detected! Restarting voicemail from beginning on {call_control_id}")
                 play_audio(call_control_id, audio_url)
@@ -1800,7 +1803,7 @@ def webhook():
 
         if is_active_transfer(call_control_id):
             logger.info(f"Transferred call {call_control_id} hung up, resuming campaign")
-            resume_after_transfer(call_control_id)
+            resume_after_transfer(call_control_id, user_id=webhook_user_id)
 
         state = get_call_state(call_control_id)
         if state:
