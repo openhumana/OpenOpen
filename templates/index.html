@@ -1125,7 +1125,7 @@
 
     <!-- ===== NAVIGATION / VIEW SWITCHING SCRIPT ===== -->
     <script>
-        var _gadsCurrentPage = '{{ demo_page|default("dashboard") }}';
+        var _gadsCurrentPage = 'dashboard';
         var _gadsPageTitles = {
             dashboard: 'Dashboard',
             campaigns: 'Campaigns',
@@ -1466,23 +1466,17 @@
             });
 
             // ---- Splash Screen ----
-            var _demoPage = '{{ demo_page|default("") }}';
-            var _splashDelay = (_demoPage || new URLSearchParams(window.location.search).get('nosplash') === '1') ? 0 : 2900;
             setTimeout(function() {
                 var sp = document.getElementById("splash");
                 sp.classList.add("fade-out");
-                setTimeout(function() { sp.classList.add("hide"); }, _splashDelay ? 500 : 0);
+                setTimeout(function() { sp.classList.add("hide"); }, 500);
                 document.getElementById("app").classList.add("show");
-                if (_demoPage && _demoPage !== 'dashboard') {
-                    navigateTo(_demoPage);
-                } else {
-                    var initPage = document.getElementById("page-" + _gadsCurrentPage);
-                    if (initPage) {
-                        void initPage.offsetWidth;
-                        initPage.classList.add("page-flip-enter");
-                    }
+                var initPage = document.getElementById("page-" + _gadsCurrentPage);
+                if (initPage) {
+                    void initPage.offsetWidth;
+                    initPage.classList.add("page-flip-enter");
                 }
-            }, _splashDelay);
+            }, 2900);
 
             // ---- Global Ripple Effect ----
             document.addEventListener("click", function(e) {

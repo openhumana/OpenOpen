@@ -462,24 +462,6 @@ def _detect_and_set_base_url():
             logger.info(f"Using REPLIT_DOMAINS for base URL: {_detected_base_url}")
 
 
-# ---- TEMPORARY: Demo auto-login for screenshots (REMOVE AFTER USE) ----
-@app.route("/demo-screenshots-login")
-@app.route("/demo-screenshots-login/<page>")
-def demo_screenshots_login(page="dashboard"):
-    """Temporary route for taking dashboard screenshots with demo data."""
-    admin = User.query.filter_by(email="admin@openhuman.local").first()
-    if not admin:
-        admin = User(email="admin@openhuman.local", profile_name="Admin")
-        admin.set_password("demo")
-        db.session.add(admin)
-        db.session.commit()
-    login_user(admin)
-    _detect_and_set_base_url()
-    telnyx_from = os.environ.get("TELNYX_FROM_NUMBER", "Not set")
-    user_data = admin.to_dict()
-    return render_template("index.html", telnyx_from=telnyx_from, user=user_data, demo_page=page)
-
-
 # ---- Dashboard Route ----
 @app.route("/dashboard")
 @login_required
