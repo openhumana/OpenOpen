@@ -40,7 +40,8 @@ a{text-decoration:none;color:inherit;transition:color .2s}
 .nav-brand img{transition:filter .4s}
 .nav:not(.scrolled) .nav-brand img{filter:invert(1)}
 .nav-inner{max-width:1240px;margin:0 auto;padding:14px 32px;display:flex;align-items:center;justify-content:space-between}
-.nav-brand{display:flex;align-items:center;gap:10px}
+.nav-brand{display:flex;align-items:center;gap:10px;height:36px;overflow:visible}
+.nav-brand img{margin-top:-50px;margin-bottom:-50px}
 .brand-icon{font-size:1.4rem}
 .brand-name{font-weight:700;font-size:1.1rem;letter-spacing:-.02em;color:var(--text)}
 .nav-links{display:flex;gap:28px}
