@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Open Human - {% if signup %}Sign Up{% else %}Login{% endif %}</title>
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧠</text></svg>">
+    <title>Open Humana - {% if signup %}Sign Up{% else %}Login{% endif %}</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='50' font-weight='bold' font-family='Arial'>OH</text></svg>">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <script>
@@ -12,22 +12,22 @@
     </script>
     <style>
         :root {
-            --login-bg: #f8f9fa;
-            --login-surface: rgba(255,255,255,0.95);
+            --login-bg: #fafafa;
+            --login-surface: rgba(255,255,255,0.97);
             --login-border: rgba(0,0,0,0.08);
-            --login-text: #202124;
-            --login-text-dim: #5f6368;
-            --login-accent: #1a73e8;
-            --login-accent-2: #4285f4;
+            --login-text: #1a1a1a;
+            --login-text-dim: #666666;
+            --login-accent: #1a1a1a;
+            --login-accent-2: #333333;
         }
         [data-theme="dark"] {
-            --login-bg: #1f1f1f;
-            --login-surface: rgba(255,255,255,0.06);
+            --login-bg: #0a0a0a;
+            --login-surface: rgba(255,255,255,0.05);
             --login-border: rgba(255,255,255,0.1);
-            --login-text: #e8eaed;
-            --login-text-dim: #9aa0a6;
-            --login-accent: #8ab4f8;
-            --login-accent-2: #aecbfa;
+            --login-text: #f0f0f0;
+            --login-text-dim: #999999;
+            --login-accent: #ffffff;
+            --login-accent-2: #cccccc;
         }
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
         body {
@@ -64,7 +64,7 @@
         }
         .login-orb-3 {
             width: 300px; height: 300px;
-            background: #4285f4;
+            background: #555555;
             top: 50%; left: 60%;
             animation-delay: -14s;
             opacity: 0.08;
@@ -79,15 +79,15 @@
         .login-grid {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
             background-image:
-                linear-gradient(rgba(26,115,232,0.03) 1px, transparent 1px),
-                linear-gradient(90deg, rgba(26,115,232,0.03) 1px, transparent 1px);
+                linear-gradient(rgba(26,26,26,0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(26,26,26,0.03) 1px, transparent 1px);
             background-size: 60px 60px;
             z-index: 0;
         }
         [data-theme="dark"] .login-grid {
             background-image:
-                linear-gradient(rgba(138,180,248,0.03) 1px, transparent 1px),
-                linear-gradient(90deg, rgba(138,180,248,0.03) 1px, transparent 1px);
+                linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px);
         }
 
         canvas#bgCanvas {
@@ -123,13 +123,13 @@
             box-shadow:
                 0 0 0 1px rgba(0,0,0,0.03),
                 0 20px 50px -12px rgba(0,0,0,0.08),
-                0 0 80px -20px rgba(26,115,232,0.1);
+                0 0 80px -20px rgba(26,26,26,0.1);
         }
         [data-theme="dark"] .login-card {
             box-shadow:
                 0 0 0 1px rgba(255,255,255,0.05),
                 0 20px 50px -12px rgba(0,0,0,0.25),
-                0 0 100px -20px rgba(26,115,232,0.15);
+                0 0 100px -20px rgba(255,255,255,0.15);
         }
         @keyframes cardEntrance {
             from { opacity: 0; transform: translateY(30px) scale(0.96); }
@@ -137,15 +137,13 @@
         }
 
         .login-logo-icon {
-            width: 64px; height: 64px;
+            width: 120px; height: 80px;
             margin: 0 auto 20px;
-            background: linear-gradient(135deg, var(--login-accent), var(--login-accent-2));
-            border-radius: 18px;
+            background: transparent;
             display: flex; align-items: center; justify-content: center;
             animation: cardEntrance 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.1s backwards;
-            box-shadow: 0 8px 24px -4px rgba(26,115,232,0.3);
         }
-        .login-logo-icon svg { width: 32px; height: 32px; stroke: #fff; fill: none; stroke-width: 2; }
+        .login-logo-icon img { width: 100%; height: 100%; object-fit: contain; }
 
         .login-text-logo {
             font-size: 28px;
@@ -214,11 +212,11 @@
         }
         .login-card input:focus {
             border-color: var(--login-accent);
-            box-shadow: 0 0 0 3px rgba(26,115,232,0.12);
+            box-shadow: 0 0 0 3px rgba(26,26,26,0.12);
             background: rgba(0,0,0,0.02);
         }
         [data-theme="dark"] .login-card input:focus {
-            box-shadow: 0 0 0 3px rgba(138,180,248,0.15), 0 0 20px -4px rgba(138,180,248,0.2);
+            box-shadow: 0 0 0 3px rgba(255,255,255,0.15), 0 0 20px -4px rgba(255,255,255,0.2);
             background: rgba(0,0,0,0.2);
         }
         .login-card input::placeholder {
@@ -229,7 +227,7 @@
         .login-btn {
             width: 100%;
             padding: 14px 24px;
-            background: var(--login-accent);
+            background: #1a1a1a;
             color: #fff;
             border: none;
             border-radius: 14px;
@@ -240,17 +238,29 @@
             position: relative;
             overflow: hidden;
             transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-            box-shadow: 0 4px 16px -2px rgba(26,115,232,0.4);
+            box-shadow: 0 4px 16px -2px rgba(26,26,26,0.4);
             margin-top: 8px;
         }
         .login-btn:hover {
-            background: #1557b0;
-            box-shadow: 0 8px 30px -4px rgba(26,115,232,0.5);
+            background: #333333;
+            box-shadow: 0 8px 30px -4px rgba(26,26,26,0.5);
             transform: translateY(-2px);
         }
         .login-btn:active {
             transform: translateY(0) scale(0.98);
-            box-shadow: 0 2px 8px rgba(26,115,232,0.3);
+            box-shadow: 0 2px 8px rgba(26,26,26,0.3);
+        }
+        [data-theme="dark"] .login-btn {
+            background: #ffffff;
+            color: #1a1a1a;
+            box-shadow: 0 4px 16px -2px rgba(255,255,255,0.4);
+        }
+        [data-theme="dark"] .login-btn:hover {
+            background: #cccccc;
+            box-shadow: 0 8px 30px -4px rgba(255,255,255,0.5);
+        }
+        [data-theme="dark"] .login-btn:active {
+            box-shadow: 0 2px 8px rgba(255,255,255,0.3);
         }
         .login-btn::after {
             content: '';
@@ -302,7 +312,7 @@
             transition: all 0.2s;
         }
         .google-btn:hover {
-            background: rgba(26,115,232,0.04);
+            background: rgba(26,26,26,0.04);
             border-color: var(--login-accent);
             transform: translateY(-1px);
             box-shadow: 0 4px 12px rgba(0,0,0,0.06);
@@ -407,9 +417,9 @@
     <div class="login-wrap">
         <div class="login-card">
             <div class="login-logo-icon">
-                <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+                <img src="/static/images/logo.png" alt="Open Humana" style="width:100%;height:100%;object-fit:contain;">
             </div>
-            <div class="login-text-logo">Open Human</div>
+            <div class="login-text-logo">Open Humana</div>
             <div class="login-subtitle">
                 {% if signup %}Create your account{% else %}Sign in to your account{% endif %}
             </div>
@@ -543,7 +553,7 @@
             this.x = Math.random() * W; this.y = Math.random() * H; this.z = Math.random();
             this.vx = (Math.random() - 0.5) * 0.3; this.vy = (Math.random() - 0.5) * 0.3;
             this.vz = (Math.random() - 0.5) * 0.005; this.baseSize = 1.5 + Math.random() * 2;
-            this.hue = Math.random() > 0.5 ? 217 : 210;
+            this.hue = Math.random() > 0.5 ? 0 : 1;
         }
         Particle.prototype.update = function() {
             this.x += this.vx; this.y += this.vy; this.z += this.vz;
@@ -561,9 +571,9 @@
         Particle.prototype.draw = function() {
             var s = this.baseSize * (0.5 + this.z * 0.8), a = 0.2 + this.z * 0.5;
             ctx.beginPath(); ctx.arc(this.x, this.y, s, 0, Math.PI * 2);
-            ctx.fillStyle = this.hue === 217 ? "rgba(26,115,232," + a + ")" : "rgba(66,133,244," + a + ")";
+            ctx.fillStyle = this.hue === 0 ? "rgba(26,26,26," + a + ")" : "rgba(51,51,51," + a + ")";
             ctx.fill();
-            if (s > 2) { ctx.beginPath(); ctx.arc(this.x, this.y, s * 3, 0, Math.PI * 2); ctx.fillStyle = this.hue === 217 ? "rgba(26,115,232," + (a*0.06) + ")" : "rgba(66,133,244," + (a*0.06) + ")"; ctx.fill(); }
+            if (s > 2) { ctx.beginPath(); ctx.arc(this.x, this.y, s * 3, 0, Math.PI * 2); ctx.fillStyle = this.hue === 0 ? "rgba(26,26,26," + (a*0.06) + ")" : "rgba(51,51,51," + (a*0.06) + ")"; ctx.fill(); }
         };
         for (var i = 0; i < PARTICLE_COUNT; i++) particles.push(new Particle());
         function animate() {
@@ -572,10 +582,10 @@
             for (var i = 0; i < particles.length; i++) {
                 for (var j = i + 1; j < particles.length; j++) {
                     var a = particles[i], b = particles[j], dx = a.x - b.x, dy = a.y - b.y, d = Math.sqrt(dx*dx + dy*dy);
-                    if (d < CONNECTION_DIST) { var al = (1 - d / CONNECTION_DIST) * 0.12 * Math.min(a.z, b.z); var g = ctx.createLinearGradient(a.x, a.y, b.x, b.y); g.addColorStop(0, "rgba(26,115,232," + al + ")"); g.addColorStop(1, "rgba(66,133,244," + al + ")"); ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.strokeStyle = g; ctx.lineWidth = 0.5 + Math.min(a.z, b.z) * 0.6; ctx.stroke(); }
+                    if (d < CONNECTION_DIST) { var al = (1 - d / CONNECTION_DIST) * 0.12 * Math.min(a.z, b.z); var g = ctx.createLinearGradient(a.x, a.y, b.x, b.y); g.addColorStop(0, "rgba(26,26,26," + al + ")"); g.addColorStop(1, "rgba(51,51,51," + al + ")"); ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.strokeStyle = g; ctx.lineWidth = 0.5 + Math.min(a.z, b.z) * 0.6; ctx.stroke(); }
                 }
             }
-            if (mouseX > 0) { for (var i = 0; i < particles.length; i++) { var p = particles[i], dx = mouseX - p.x, dy = mouseY - p.y, d = Math.sqrt(dx*dx + dy*dy); if (d < MOUSE_DIST) { ctx.beginPath(); ctx.moveTo(mouseX, mouseY); ctx.lineTo(p.x, p.y); ctx.strokeStyle = "rgba(138,180,248," + ((1 - d / MOUSE_DIST) * 0.2) + ")"; ctx.lineWidth = 0.6; ctx.stroke(); } } }
+            if (mouseX > 0) { for (var i = 0; i < particles.length; i++) { var p = particles[i], dx = mouseX - p.x, dy = mouseY - p.y, d = Math.sqrt(dx*dx + dy*dy); if (d < MOUSE_DIST) { ctx.beginPath(); ctx.moveTo(mouseX, mouseY); ctx.lineTo(p.x, p.y); ctx.strokeStyle = "rgba(51,51,51," + ((1 - d / MOUSE_DIST) * 0.2) + ")"; ctx.lineWidth = 0.6; ctx.stroke(); } } }
             for (var i = 0; i < particles.length; i++) particles[i].draw();
             requestAnimationFrame(animate);
         }
