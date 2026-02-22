@@ -1,7 +1,7 @@
-# Open Human - Intelligent Communication at Scale
+# Open Humana - Intelligent Communication at Scale
 
 ## Overview
-A production-ready multi-user outbound voicemail drop web application branded as "Open Human". Built with Python + Flask + PostgreSQL and Telnyx Call Control API. Users sign up via email/password or Google OAuth, then upload voicemail audio and phone number lists via a modern dashboard. The system automatically dials numbers, detects answering machines, transfers human-answered calls, and drops voicemail messages. All data is isolated per-user.
+A production-ready multi-user outbound voicemail drop web application branded as "Open Humana". Built with Python + Flask + PostgreSQL and Telnyx Call Control API. Users sign up via email/password, Google OAuth, or admin login (APP_PASSWORD). Upload voicemail audio and phone number lists via a modern dashboard. The system automatically dials numbers, detects answering machines, transfers human-answered calls, and drops voicemail messages. All data is isolated per-user.
 
 ## Project Architecture
 - **app.py** - Main Flask application with routes, webhooks, campaign control, authentication
@@ -63,18 +63,20 @@ A production-ready multi-user outbound voicemail drop web application branded as
 - Voicemail drop is always automatic for all machine-detected calls (no toggle)
 
 ## Branding & Design
-- **Brand**: Open Human
-- **Tagline**: Power Sales Assistant
-- **Primary color**: Google Blue (#1a73e8) - consistent across landing, login, and dashboard
-- **Secondary blue**: #4285f4 (lighter accents)
+- **Brand**: Open Humana
+- **Logo**: Custom logo image at static/images/logo.png (black text on white, "Open Humana" with stylized 'a')
+- **Tagline**: Intelligent Communication at Scale
+- **Primary color**: Dark black (#1a1a1a) - consistent across landing, login, and dashboard
+- **Secondary dark**: #333333 (lighter accents)
 - **Success**: Google Green (#0f9d58)
 - **Error**: Google Red (#d93025)
 - **Warning**: Google Yellow (#f9ab00)
-- **Background**: Light gray (#f8f9fa)
+- **Background**: Light gray (#fafafa)
 - **Cards**: White with subtle shadows
-- **Font**: Google Sans / Inter (UI), system sans-serif fallback
-- **Favicon**: Brain emoji
-- **Dark theme**: Google-style dark (#1f1f1f bg, #292929 surface, #8ab4f8 primary)
+- **Font**: Inter (UI), system sans-serif fallback
+- **Favicon**: "OH" text SVG
+- **Dark theme**: Deep dark (#0a0a0a bg, rgba(255,255,255,0.05) surface, #ffffff primary)
+- **Login splash video**: After successful login, plays static/videos/login-splash.mp4 fullscreen before redirecting to dashboard (AJAX login with video overlay)
 
 ## Landing Page Visual Effects
 - **Hero**: Dark immersive bg (#0a0a1a), 60-particle canvas with connecting lines, 3 floating gradient orbs, grid overlay, word-by-word title reveal with 3D rotation

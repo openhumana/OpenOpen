@@ -320,6 +320,7 @@ def login():
     if current_user.is_authenticated:
         return redirect(url_for("dashboard"))
     error = None
+    is_ajax = request.headers.get("X-Requested-With") == "XMLHttpRequest"
     if request.method == "POST":
         login_mode = request.form.get("login_mode", "user")
         if login_mode == "admin" and APP_PASSWORD:
@@ -333,6 +334,8 @@ def login():
                     db.session.commit()
                     logger.info("Admin account auto-created via APP_PASSWORD login")
                 login_user(admin)
+                if is_ajax:
+                    return jsonify({"success": True, "redirect": url_for("dashboard")})
                 return redirect(url_for("dashboard"))
             else:
                 error = "Invalid admin password"
@@ -345,9 +348,13 @@ def login():
                 user = User.query.filter_by(email=email).first()
                 if user and user.check_password(password):
                     login_user(user)
+                    if is_ajax:
+                        return jsonify({"success": True, "redirect": url_for("dashboard")})
                     return redirect(url_for("dashboard"))
                 else:
                     error = "Invalid email or password"
+        if is_ajax and error:
+            return jsonify({"success": False, "error": error}), 401
     return render_template("login.html", error=error, google_oauth=google_oauth_available, app_password_set=bool(APP_PASSWORD))
 
 

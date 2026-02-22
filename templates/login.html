@@ -35,7 +35,8 @@
             background: var(--login-bg);
             color: var(--login-text);
             min-height: 100vh;
-            overflow: hidden;
+            overflow-x: hidden;
+            overflow-y: auto;
             -webkit-font-smoothing: antialiased;
         }
 
@@ -137,8 +138,8 @@
         }
 
         .login-logo-icon {
-            width: 120px; height: 80px;
-            margin: 0 auto 20px;
+            width: 220px; height: 80px;
+            margin: 0 auto 8px;
             background: transparent;
             display: flex; align-items: center; justify-content: center;
             animation: cardEntrance 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.1s backwards;
@@ -164,7 +165,6 @@
         }
 
         .login-form {
-            animation: cardEntrance 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.25s backwards;
         }
         .login-form label {
             display: block;
@@ -196,10 +196,10 @@
         .login-card input[type="password"] {
             width: 100%;
             padding: 14px 16px 14px 44px;
-            background: rgba(0,0,0,0.03);
-            border: 1px solid var(--login-border);
+            background: #f5f5f5;
+            border: 2px solid #ccc;
             border-radius: 14px;
-            color: var(--login-text);
+            color: #1a1a1a;
             font-size: 15px;
             font-family: inherit;
             transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
@@ -419,7 +419,6 @@
             <div class="login-logo-icon">
                 <img src="/static/images/logo.png" alt="Open Humana" style="width:100%;height:100%;object-fit:contain;">
             </div>
-            <div class="login-text-logo">Open Humana</div>
             <div class="login-subtitle">
                 {% if signup %}Create your account{% else %}Sign in to your account{% endif %}
             </div>
@@ -505,6 +504,58 @@
             <div class="login-footer">Intelligent Communication at Scale</div>
         </div>
     </div>
+
+    <div id="splashOverlay" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;z-index:10000;background:#000;">
+        <video id="splashVideo" autoplay muted playsinline style="width:100%;height:100%;object-fit:cover;">
+            <source src="/static/videos/login-splash.mp4" type="video/mp4">
+        </video>
+    </div>
+
+    <script>
+    (function(){
+        var loginForm = document.getElementById("loginForm");
+        if (!loginForm) return;
+        loginForm.addEventListener("submit", function(e) {
+            e.preventDefault();
+            var formData = new FormData(loginForm);
+            var btn = document.getElementById("loginSubmitBtn");
+            btn.disabled = true;
+            btn.textContent = "Signing in...";
+            fetch("/login", {
+                method: "POST",
+                body: formData,
+                headers: {"X-Requested-With": "XMLHttpRequest"},
+                credentials: "include"
+            }).then(function(res) { return res.json(); }).then(function(data) {
+                if (data.success) {
+                    var overlay = document.getElementById("splashOverlay");
+                    var video = document.getElementById("splashVideo");
+                    overlay.style.display = "block";
+                    video.play();
+                    video.addEventListener("ended", function() {
+                        window.location.href = data.redirect || "/dashboard";
+                    });
+                    setTimeout(function() {
+                        window.location.href = data.redirect || "/dashboard";
+                    }, 8000);
+                } else {
+                    btn.disabled = false;
+                    btn.textContent = loginForm.querySelector("#loginMode").value === "admin" ? "Login as Admin" : "Sign In";
+                    var errDiv = document.querySelector(".login-error");
+                    if (!errDiv) {
+                        errDiv = document.createElement("div");
+                        errDiv.className = "login-error";
+                        loginForm.parentNode.insertBefore(errDiv, loginForm);
+                    }
+                    errDiv.textContent = data.error || "Login failed";
+                }
+            }).catch(function() {
+                btn.disabled = false;
+                btn.textContent = "Sign In";
+            });
+        });
+    })();
+    </script>
 
     <script>
         document.getElementById("themeToggle").addEventListener("click", function() {
