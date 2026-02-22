@@ -166,6 +166,7 @@ input, textarea, select, button { font-family: inherit; font-size: inherit; }
     transition: all 0.2s;
 }
 .gads-sidebar-logo:hover { background: var(--gads-surface-hover); }
+[data-theme="dark"] .gads-sidebar-logo img { filter: invert(1); }
 .gads-logo-text {
     white-space: nowrap;
     color: var(--gads-primary);

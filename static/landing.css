@@ -37,6 +37,8 @@ a{text-decoration:none;color:inherit;transition:color .2s}
 .nav:not(.scrolled) .nav-login{color:rgba(255,255,255,0.7);border-color:rgba(255,255,255,0.15)}
 .nav:not(.scrolled) .nav-login:hover{border-color:rgba(255,255,255,0.4);color:#fff}
 .nav:not(.scrolled) .nav-mobile span{background:#fff}
+.nav-brand img{transition:filter .4s}
+.nav:not(.scrolled) .nav-brand img{filter:invert(1)}
 .nav-inner{max-width:1240px;margin:0 auto;padding:14px 32px;display:flex;align-items:center;justify-content:space-between}
 .nav-brand{display:flex;align-items:center;gap:10px}
 .brand-icon{font-size:1.4rem}
