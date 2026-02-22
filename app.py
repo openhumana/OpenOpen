@@ -751,7 +751,7 @@ def test_call():
     set_campaign(audio, transfer_num, [number], dial_mode="sequential", batch_size=1, user_id=current_user.id)
 
     logger.info(f"Placing test call to {number}")
-    call_control_id = make_call(number)
+    call_control_id, call_error = make_call(number)
 
     if call_control_id:
         create_call_state(call_control_id, number, user_id=current_user.id)
@@ -760,8 +760,8 @@ def test_call():
         logger.info(f"Test call placed successfully to {number}")
         return jsonify({"message": f"Test call placed to {number}", "call_control_id": call_control_id})
     else:
-        logger.error(f"Test call failed to {number}")
-        return jsonify({"error": "Failed to place call. Check your Telnyx credentials."}), 500
+        logger.error(f"Test call failed to {number}: {call_error}")
+        return jsonify({"error": f"Failed to place call: {call_error}"}), 500
 
 
 # ---- Stop Campaign ----

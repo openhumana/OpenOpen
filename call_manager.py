@@ -102,7 +102,7 @@ def _dial_sequential(numbers, dial_delay=2, from_number=None, user_id=None):
             continue
 
         logger.info(f"Dialing [{i+1}/{len(numbers)}]: {number}")
-        call_control_id = make_call(number, from_number_override=from_number)
+        call_control_id, call_error = make_call(number, from_number_override=from_number)
 
         if call_control_id:
             complete_event = register_call_complete_event(call_control_id)
@@ -111,7 +111,7 @@ def _dial_sequential(numbers, dial_delay=2, from_number=None, user_id=None):
             complete_event.wait(timeout=120)
             logger.info(f"Call to {number} completed, moving to next")
         else:
-            logger.error(f"Could not dial {number}, skipping")
+            logger.error(f"Could not dial {number}: {call_error}")
 
         increment_dialed(user_id=user_id)
         if i < len(numbers) - 1:
@@ -177,9 +177,9 @@ def _place_single_call(number, from_number=None, user_id=None):
         logger.info(f"Skipping invalid number: {number} ({reason})")
         log_invalid_number(number, reason, user_id=user_id)
         return
-    call_control_id = make_call(number, from_number_override=from_number)
+    call_control_id, call_error = make_call(number, from_number_override=from_number)
     if call_control_id:
         create_call_state(call_control_id, number, user_id=user_id)
         logger.info(f"Call state created for {number}")
     else:
-        logger.error(f"Could not dial {number}, skipping")
+        logger.error(f"Could not dial {number}: {call_error}")

@@ -106,11 +106,18 @@ def validate_connection_id():
 def make_call(number, from_number_override=None):
     """
     Place an outbound call with answering machine detection enabled.
-    Returns the call_control_id on success, or None on failure.
+    Returns (call_control_id, None) on success, or (None, error_string) on failure.
     """
     connection_id = _get_connection_id()
     from_number = from_number_override or os.environ.get("TELNYX_FROM_NUMBER", "")
     webhook_url = _get_webhook_url()
+
+    if not os.environ.get("TELNYX_API_KEY", ""):
+        return None, "TELNYX_API_KEY is not set"
+    if not connection_id:
+        return None, "No Call Control Application found. Create one in the Phone Numbers page or set TELNYX_CONNECTION_ID."
+    if not from_number:
+        return None, "TELNYX_FROM_NUMBER is not set. Add a caller ID number in Settings or buy one in Phone Numbers."
 
     number = _normalize_number(number)
     logger.info(f"Placing call to {number} with webhook_url: {webhook_url}")
@@ -157,15 +164,31 @@ def make_call(number, from_number_override=None):
                     timeout=15,
                 )
         if resp.status_code != 200:
+            error_detail = ""
+            try:
+                err_json = resp.json()
+                errors = err_json.get("errors", [])
+                if errors:
+                    error_detail = errors[0].get("detail", "") or errors[0].get("title", "")
+                if not error_detail:
+                    error_detail = resp.text[:300]
+            except Exception:
+                error_detail = resp.text[:300]
             logger.error(f"Telnyx API error {resp.status_code}: {resp.text}")
-        resp.raise_for_status()
+            return None, f"Telnyx error ({resp.status_code}): {error_detail}"
         data = resp.json().get("data", {})
         call_control_id = data.get("call_control_id")
         logger.info(f"Call placed to {number}, call_control_id={call_control_id}")
-        return call_control_id
+        return call_control_id, None
+    except requests.exceptions.Timeout:
+        logger.error(f"Timeout placing call to {number}")
+        return None, "Telnyx API request timed out. Try again."
+    except requests.exceptions.ConnectionError:
+        logger.error(f"Connection error placing call to {number}")
+        return None, "Could not connect to Telnyx API. Check your internet connection."
     except Exception as e:
         logger.error(f"Failed to place call to {number}: {e}")
-        return None
+        return None, str(e)
 
 
 def _resolved_connection_id_reset():
