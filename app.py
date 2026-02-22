@@ -1543,6 +1543,13 @@ def webhook():
     Always returns 200 immediately to avoid timeouts.
     All call logic decisions are made here based on event type.
     """
+    try:
+        return _handle_webhook()
+    except Exception as e:
+        logger.error(f"CRITICAL webhook handler error: {e}", exc_info=True)
+        return "", 200
+
+def _handle_webhook():
     body = request.json
     if not body:
         logger.warning("Webhook received with empty body")
@@ -1556,19 +1563,19 @@ def webhook():
     logger.info(f">>> WEBHOOK received: {event_type} for call {call_control_id}")
     record_webhook_event(event_type, call_control_id)
 
-    to_number = payload.get("to", "")
-    from_number = payload.get("from", "")
+    to_number = payload.get("to") or ""
+    from_number = payload.get("from") or ""
     call_number = to_number or from_number
 
     state = get_call_state(call_control_id)
 
     webhook_user_id = get_user_for_call(call_control_id)
     camp = get_campaign(user_id=webhook_user_id)
-    transfer_num = camp.get("transfer_number", "")
+    transfer_num = camp.get("transfer_number") or ""
     is_transfer_leg = False
     if not state and call_control_id and call_number:
-        normalized_to = to_number.lstrip("+").replace("-", "").replace(" ", "")
-        normalized_transfer = transfer_num.lstrip("+").replace("-", "").replace(" ", "")
+        normalized_to = (to_number or "").lstrip("+").replace("-", "").replace(" ", "")
+        normalized_transfer = (transfer_num or "").lstrip("+").replace("-", "").replace(" ", "")
         if transfer_num and normalized_transfer and normalized_to and (normalized_transfer in normalized_to or normalized_to in normalized_transfer):
             is_transfer_leg = True
             logger.info(f"Transfer leg detected: {call_control_id} to {to_number} (transfer number: {transfer_num})")
@@ -1633,7 +1640,7 @@ def webhook():
                 update_call_state(ccid, machine_detected=False, status="human_detected", amd_received=True,
                                   amd_result="timeout", status_description="AMD detection timeout", status_color="yellow")
                 camp = get_campaign(user_id=get_user_for_call(ccid))
-                transfer_num = camp.get("transfer_number", "")
+                transfer_num = camp.get("transfer_number") or ""
                 customer_num = state.get("number", "")
                 if transfer_num and mark_transferred(ccid):
                     logger.info(f"Fallback transfer {ccid} to {transfer_num} (caller ID: {customer_num})")
@@ -1684,7 +1691,7 @@ def webhook():
             update_call_state(call_control_id, machine_detected=False, status="human_detected",
                               amd_result="human", status_description="Human detected", status_color="blue")
             camp = get_campaign(user_id=webhook_user_id)
-            transfer_num = camp.get("transfer_number", "")
+            transfer_num = camp.get("transfer_number") or ""
             customer_num = (get_call_state(call_control_id) or {}).get("number", "")
             if transfer_num and mark_transferred(call_control_id):
                 logger.info(f"HUMAN detected - transferring {call_control_id} to {transfer_num} (caller ID: {customer_num})")
@@ -1750,7 +1757,7 @@ def webhook():
             update_call_state(call_control_id, machine_detected=False, status="human_detected",
                               amd_result="not_sure", status_description="Detection unclear - treating as human", status_color="yellow")
             camp = get_campaign(user_id=webhook_user_id)
-            transfer_num = camp.get("transfer_number", "")
+            transfer_num = camp.get("transfer_number") or ""
             customer_num = (get_call_state(call_control_id) or {}).get("number", "")
             if transfer_num and mark_transferred(call_control_id):
                 logger.info(f"AMD not_sure on {call_control_id}, treating as HUMAN - transferring to {transfer_num} (caller ID: {customer_num})")
