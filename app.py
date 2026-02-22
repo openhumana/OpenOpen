@@ -321,18 +321,34 @@ def login():
         return redirect(url_for("dashboard"))
     error = None
     if request.method == "POST":
-        email = request.form.get("email", "").strip().lower()
-        password = request.form.get("password", "")
-        if not email or not password:
-            error = "Please enter email and password"
-        else:
-            user = User.query.filter_by(email=email).first()
-            if user and user.check_password(password):
-                login_user(user)
+        login_mode = request.form.get("login_mode", "user")
+        if login_mode == "admin" and APP_PASSWORD:
+            app_password = request.form.get("app_password", "")
+            if app_password == APP_PASSWORD:
+                admin = User.query.filter_by(email="admin@openhuman.local").first()
+                if not admin:
+                    admin = User(email="admin@openhuman.local", profile_name="Admin")
+                    admin.set_password(APP_PASSWORD)
+                    db.session.add(admin)
+                    db.session.commit()
+                    logger.info("Admin account auto-created via APP_PASSWORD login")
+                login_user(admin)
                 return redirect(url_for("dashboard"))
             else:
-                error = "Invalid email or password"
-    return render_template("login.html", error=error, google_oauth=google_oauth_available)
+                error = "Invalid admin password"
+        else:
+            email = request.form.get("email", "").strip().lower()
+            password = request.form.get("password", "")
+            if not email or not password:
+                error = "Please enter email and password"
+            else:
+                user = User.query.filter_by(email=email).first()
+                if user and user.check_password(password):
+                    login_user(user)
+                    return redirect(url_for("dashboard"))
+                else:
+                    error = "Invalid email or password"
+    return render_template("login.html", error=error, google_oauth=google_oauth_available, app_password_set=bool(APP_PASSWORD))
 
 
 @app.route("/signup", methods=["GET", "POST"])
