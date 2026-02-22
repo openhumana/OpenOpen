@@ -841,6 +841,146 @@ def auto_configure_outbound():
         return False
 
 
+def caller_health_check(phone_number):
+    """
+    Perform a comprehensive caller health intelligence check on a phone number.
+    Uses Telnyx Number Lookup for carrier info + CNAM lookup for caller ID reputation.
+    Returns health score, spam risk assessment, and recommendations.
+    """
+    normalized = _normalize_number(phone_number)
+    health = {
+        "phone_number": normalized,
+        "health_score": 100,
+        "risk_level": "low",
+        "carrier": None,
+        "line_type": None,
+        "cnam": None,
+        "issues": [],
+        "recommendations": [],
+        "checks": {},
+    }
+
+    try:
+        resp = requests.get(
+            f"{TELNYX_API_BASE}/number_lookup/{normalized}",
+            params={"type": "carrier"},
+            headers=_headers(),
+            timeout=15,
+        )
+        if resp.status_code == 404:
+            health["health_score"] = 0
+            health["risk_level"] = "critical"
+            health["issues"].append("Number not found - likely disconnected or invalid")
+            health["checks"]["carrier"] = "fail"
+            return health
+        if resp.status_code == 422:
+            health["health_score"] = 0
+            health["risk_level"] = "critical"
+            health["issues"].append("Invalid phone number format")
+            health["checks"]["carrier"] = "fail"
+            return health
+        resp.raise_for_status()
+        data = resp.json().get("data", {})
+        carrier = data.get("carrier", {})
+        health["carrier"] = carrier.get("name", "")
+        health["line_type"] = carrier.get("type", "")
+        health["checks"]["carrier"] = "pass"
+
+        if not health["carrier"]:
+            health["health_score"] -= 30
+            health["issues"].append("No carrier data available - number may be disconnected")
+            health["checks"]["carrier"] = "warning"
+
+        if health["line_type"] == "voip":
+            health["health_score"] -= 15
+            health["issues"].append("VoIP number - higher spam flagging risk by carriers")
+            health["recommendations"].append("Consider using a landline or mobile number for better deliverability")
+        elif health["line_type"] == "landline":
+            health["recommendations"].append("Landline number - good reputation for outbound calling")
+
+    except Exception as e:
+        logger.error(f"Carrier lookup failed for {normalized}: {e}")
+        health["health_score"] -= 20
+        health["issues"].append(f"Carrier lookup failed: {str(e)}")
+        health["checks"]["carrier"] = "error"
+
+    try:
+        cnam_resp = requests.get(
+            f"{TELNYX_API_BASE}/number_lookup/{normalized}",
+            params={"type": "caller-name"},
+            headers=_headers(),
+            timeout=15,
+        )
+        if cnam_resp.status_code == 200:
+            cnam_data = cnam_resp.json().get("data", {})
+            caller_name = cnam_data.get("caller_name", {})
+            cnam_value = caller_name.get("caller_name", "") if caller_name else ""
+            health["cnam"] = cnam_value
+            health["checks"]["cnam"] = "pass"
+
+            if not cnam_value:
+                health["health_score"] -= 10
+                health["issues"].append("No CNAM (Caller ID Name) registered - calls may show as 'Unknown'")
+                health["recommendations"].append("Register a CNAM for your number to display your business name")
+            elif any(w in cnam_value.lower() for w in ["spam", "scam", "fraud", "telemarket", "robocall"]):
+                health["health_score"] -= 40
+                health["risk_level"] = "high"
+                health["issues"].append(f"CNAM contains spam indicator: '{cnam_value}'")
+                health["recommendations"].append("This number may be flagged as spam. Consider getting a new number.")
+        else:
+            health["checks"]["cnam"] = "unavailable"
+    except Exception as e:
+        logger.error(f"CNAM lookup failed for {normalized}: {e}")
+        health["checks"]["cnam"] = "error"
+
+    if health["health_score"] >= 80:
+        health["risk_level"] = "low"
+    elif health["health_score"] >= 50:
+        health["risk_level"] = "medium"
+    elif health["health_score"] >= 20:
+        health["risk_level"] = "high"
+    else:
+        health["risk_level"] = "critical"
+
+    if not health["issues"]:
+        health["recommendations"].append("Number looks healthy for outbound calling")
+
+    health["health_score"] = max(0, min(100, health["health_score"]))
+    return health
+
+
+def caller_health_check_batch(phone_numbers, max_concurrent=3):
+    """
+    Perform health checks on multiple numbers.
+    Returns list of health results.
+    """
+    import concurrent.futures
+    import time as _time
+
+    results = []
+
+    def _check_single(number):
+        result = caller_health_check(number)
+        _time.sleep(0.2)
+        return result
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max_concurrent) as executor:
+        futures = {executor.submit(_check_single, num): num for num in phone_numbers}
+        for future in concurrent.futures.as_completed(futures):
+            try:
+                results.append(future.result())
+            except Exception as e:
+                results.append({
+                    "phone_number": futures[future],
+                    "health_score": 0,
+                    "risk_level": "error",
+                    "issues": [str(e)],
+                })
+
+    results.sort(key=lambda x: x.get("health_score", 0))
+    return results
+
+
 def get_number_order_status(order_id):
     try:
         resp = requests.get(

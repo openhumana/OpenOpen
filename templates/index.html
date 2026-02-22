@@ -128,7 +128,14 @@
 
                     <div class="gads-notification-wrap" id="gadsNotificationWrap">
                         <button type="button" class="gads-topbar-btn" id="notificationBell" onclick="toggleNotifications()" title="Notifications">
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>
+                            <svg class="bell-icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M10.146 3.248a2 2 0 0 1 3.708 0"/>
+                                <path d="M5.502 16h12.996c-.456-1.066-1.498-3.414-1.498-7 0-2.761-2.239-5-5-5s-5 2.239-5 5c0 3.586-1.042 5.934-1.498 7z" fill="currentColor" fill-opacity="0.08"/>
+                                <path d="M5.502 16h12.996c-.456-1.066-1.498-3.414-1.498-7 0-2.761-2.239-5-5-5s-5 2.239-5 5c0 3.586-1.042 5.934-1.498 7z"/>
+                                <path d="M4 16h16"/>
+                                <path d="M10 16v.5a2 2 0 0 0 4 0V16"/>
+                                <circle cx="12" cy="3" r="0.5" fill="currentColor" stroke="none"/>
+                            </svg>
                             <span class="gads-notification-badge" id="notifBadge" style="display:none;">0</span>
                         </button>
                         <div class="gads-notification-panel" id="notifPanel">
@@ -803,10 +810,38 @@
                         </div>
                         <div class="gads-table-wrap" style="max-height:360px;overflow-y:auto;">
                             <table class="gads-table" id="ownedNumbersTable">
-                                <thead><tr><th>Phone Number</th><th>Status</th><th>Voice App</th><th>Type</th><th>Actions</th></tr></thead>
-                                <tbody id="ownedNumbersBody"><tr><td colspan="5" class="gads-empty">Loading...</td></tr></tbody>
+                                <thead><tr><th>Phone Number</th><th>Health</th><th>Status</th><th>Voice App</th><th>Type</th><th>Actions</th></tr></thead>
+                                <tbody id="ownedNumbersBody"><tr><td colspan="6" class="gads-empty">Loading...</td></tr></tbody>
                             </table>
                         </div>
+                    </div>
+
+                    <div class="gads-card" style="margin-top:20px;">
+                        <div class="gads-card-header">
+                            <h3>
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"/><path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3"/><circle cx="12" cy="17" r=".5" fill="currentColor"/></svg>
+                                Caller Health Intelligence
+                            </h3>
+                            <button type="button" class="gads-btn gads-btn-primary gads-btn-sm" id="healthCheckAllBtn" onclick="healthCheckAllNumbers()">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+                                Check All My Numbers
+                            </button>
+                        </div>
+                        <div style="font-size:13px;color:var(--gads-text-secondary);margin-bottom:12px;">
+                            Analyze your phone numbers for spam risk, carrier reputation, and CNAM status. Get alerts if a number starts landing in spam.
+                        </div>
+                        <div style="display:flex;gap:8px;margin-bottom:12px;align-items:flex-end;">
+                            <div style="flex:1;">
+                                <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">Check a Number</label>
+                                <input type="text" id="healthCheckInput" class="gads-input" placeholder="Enter phone number (e.g. +12125551234)" style="width:100%;">
+                            </div>
+                            <button type="button" class="gads-btn gads-btn-primary gads-btn-sm" onclick="singleHealthCheck()">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+                                Diagnose
+                            </button>
+                        </div>
+                        <div id="healthCheckResult" style="display:none;"></div>
+                        <div id="healthBatchResults" style="display:none;margin-top:12px;"></div>
                     </div>
 
                     <div class="gads-card" style="margin-top:20px;">
@@ -1287,30 +1322,70 @@
 
         /* ===== NOTIFICATIONS ===== */
         var _notifications = [];
+        var _unreadCount = 0;
+        var _notifDedup = {};
 
         function toggleNotifications() {
             var panel = document.getElementById('notifPanel');
+            var bell = document.getElementById('notificationBell');
             panel.classList.toggle('open');
+            if (panel.classList.contains('open')) {
+                _unreadCount = 0;
+                updateBellBadge();
+                if (bell) bell.classList.remove('has-unread');
+            }
             var avatarMenu = document.getElementById('avatarMenu');
             if (avatarMenu) avatarMenu.classList.remove('open');
         }
 
         function addNotification(type, message) {
-            var icons = { success: '&#10003;', warning: '&#9888;', error: '&#10007;', info: '&#8505;' };
-            var now = new Date();
-            var timeStr = now.getHours().toString().padStart(2,'0') + ':' + now.getMinutes().toString().padStart(2,'0');
+            var dedupKey = type + ':' + message;
+            var now = Date.now();
+            if (_notifDedup[dedupKey] && (now - _notifDedup[dedupKey]) < 10000) {
+                return;
+            }
+            _notifDedup[dedupKey] = now;
+            var keys = Object.keys(_notifDedup);
+            if (keys.length > 50) {
+                keys.sort(function(a,b){ return _notifDedup[a] - _notifDedup[b]; });
+                for (var i = 0; i < keys.length - 30; i++) delete _notifDedup[keys[i]];
+            }
+            var timeObj = new Date();
+            var timeStr = timeObj.getHours().toString().padStart(2,'0') + ':' + timeObj.getMinutes().toString().padStart(2,'0');
             _notifications.unshift({ type: type, message: message, time: timeStr });
-            if (_notifications.length > 20) _notifications.pop();
+            if (_notifications.length > 30) _notifications.pop();
+            _unreadCount++;
             renderNotifications();
+            ringBell();
+        }
+
+        function ringBell() {
+            var bell = document.getElementById('notificationBell');
+            if (!bell) return;
+            bell.classList.add('has-unread');
+            bell.classList.remove('bell-ringing');
+            void bell.offsetWidth;
+            bell.classList.add('bell-ringing');
+            setTimeout(function() { bell.classList.remove('bell-ringing'); }, 700);
+        }
+
+        function updateBellBadge() {
+            var badge = document.getElementById('notifBadge');
+            if (!badge) return;
+            if (_unreadCount > 0) {
+                badge.textContent = _unreadCount > 99 ? '99+' : _unreadCount;
+                badge.style.display = 'flex';
+            } else {
+                badge.style.display = 'none';
+            }
         }
 
         function renderNotifications() {
             var list = document.getElementById('notifList');
-            var badge = document.getElementById('notifBadge');
             if (!list) return;
             if (_notifications.length === 0) {
                 list.innerHTML = '<div class="gads-notif-empty">No new notifications</div>';
-                if (badge) badge.style.display = 'none';
+                updateBellBadge();
                 return;
             }
             var html = '';
@@ -1318,15 +1393,16 @@
                 html += '<div class="gads-notif-item"><div class="gads-notif-icon gads-notif-icon-' + n.type + '">' + ({success:'&#10003;',warning:'&#9888;',error:'&#10007;',info:'&#8505;'}[n.type] || '&#8505;') + '</div><div class="gads-notif-body"><div class="gads-notif-msg">' + n.message + '</div><div class="gads-notif-time">' + n.time + '</div></div></div>';
             });
             list.innerHTML = html;
-            if (badge) {
-                badge.textContent = _notifications.length;
-                badge.style.display = 'flex';
-            }
+            updateBellBadge();
         }
 
         function clearNotifications() {
             _notifications = [];
+            _unreadCount = 0;
+            _notifDedup = {};
             renderNotifications();
+            var bell = document.getElementById('notificationBell');
+            if (bell) bell.classList.remove('has-unread');
         }
 
         document.addEventListener('click', function(e) {
@@ -2351,12 +2427,12 @@
                         animateCounter(document.getElementById("dashConnected"), connected);
 
                         var newVmCount = voicemails;
-                        if (newVmCount > prevVmCount && prevVmCount > 0) {
+                        if (initialPollDone && newVmCount > prevVmCount && prevVmCount >= 0) {
                             showToast("Voicemail dropped", "success");
                         }
                         prevVmCount = newVmCount;
 
-                        if (hotLeads > prevHotLeadCount && prevHotLeadCount >= 0) {
+                        if (initialPollDone && hotLeads > prevHotLeadCount && prevHotLeadCount >= 0) {
                             var newHotCalls = calls.filter(function(c){ return c.transferred; });
                             if (newHotCalls.length > 0) {
                                 sendHotLeadNotification(newHotCalls[0].number);
@@ -3292,29 +3368,40 @@
                 }).catch(function(e){if(e.message==="auth")return;showToast("Purchase failed","error");});
             }
 
+            var _ownedNumbersList = [];
+            var _numberHealthCache = {};
+
             function loadOwnedNumbers() {
                 apiFetch("/api/numbers/owned").then(function(r){return r.json();}).then(function(data) {
                     var body = document.getElementById("ownedNumbersBody");
                     var badge = document.getElementById("ownedNumbersCount");
                     if (data.error) {
-                        body.innerHTML = '<tr><td colspan="5" class="gads-empty">Failed to load: ' + data.error + '</td></tr>';
+                        body.innerHTML = '<tr><td colspan="6" class="gads-empty">Failed to load: ' + data.error + '</td></tr>';
                         return;
                     }
                     var nums = data.numbers || [];
+                    _ownedNumbersList = nums;
                     badge.textContent = nums.length + " number" + (nums.length !== 1 ? "s" : "");
                     if (nums.length === 0) {
-                        body.innerHTML = '<tr><td colspan="5" class="gads-empty">No numbers yet. Search and buy above.</td></tr>';
+                        body.innerHTML = '<tr><td colspan="6" class="gads-empty">No numbers yet. Search and buy above.</td></tr>';
                         return;
                     }
                     var html = "";
                     nums.forEach(function(n) {
                         var statusClass = n.status === "active" ? "gads-badge-success" : "gads-badge-warning";
+                        var healthHtml = '<span class="health-badge health-pending" id="health-' + n.phone_number.replace(/[^0-9]/g,'') + '"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg> --</span>';
+                        var cached = _numberHealthCache[n.phone_number];
+                        if (cached) {
+                            healthHtml = renderHealthBadge(cached);
+                        }
                         html += '<tr>';
                         html += '<td class="td-mono" style="font-weight:600;">' + n.phone_number + '</td>';
+                        html += '<td>' + healthHtml + '</td>';
                         html += '<td><span class="gads-badge ' + statusClass + '">' + n.status + '</span></td>';
                         html += '<td style="font-size:12px;">' + (n.connection_name || '<span style="color:var(--gads-text-muted);">Not assigned</span>') + '</td>';
                         html += '<td><span class="gads-badge">' + (n.number_type || "-") + '</span></td>';
                         html += '<td>';
+                        html += '<button class="gads-btn gads-btn-outline gads-btn-sm" style="font-size:11px;margin-right:4px;" onclick="singleHealthCheckForNumber(\'' + n.phone_number + '\')" title="Health Check"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></button>';
                         if (!n.connection_id) {
                             html += '<button class="gads-btn gads-btn-outline gads-btn-sm" onclick="autoAssignNumber(\'' + n.phone_number + '\')">Setup</button> ';
                         }
@@ -3420,6 +3507,163 @@
 
             function loadTestFromNumbers() {
                 _fetchOwnedNumbers(function(data) { _populateNumberDropdown("testFromNumber", data); });
+            }
+
+            function renderHealthBadge(h) {
+                var score = h.health_score;
+                var cls = 'health-good';
+                var label = score + '%';
+                var icon = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>';
+                if (score >= 80) cls = 'health-good';
+                else if (score >= 50) cls = 'health-warning';
+                else cls = 'health-danger';
+                return '<span class="health-badge ' + cls + '" title="' + (h.issues || []).join('; ') + '">' + icon + ' ' + label + '</span>';
+            }
+
+            function renderHealthCard(h) {
+                var scoreColor = h.health_score >= 80 ? '#1e8e3e' : h.health_score >= 50 ? '#f9ab00' : '#d93025';
+                var riskLabel = {low: 'Low Risk', medium: 'Medium Risk', high: 'High Risk', critical: 'Critical'}[h.risk_level] || h.risk_level;
+                var riskColor = {low: '#1e8e3e', medium: '#f9ab00', high: '#d93025', critical: '#d93025'}[h.risk_level] || '#999';
+                var html = '<div style="border:1px solid var(--gads-border);border-radius:12px;padding:16px;background:var(--gads-surface);">';
+                html += '<div style="display:flex;align-items:center;gap:16px;margin-bottom:12px;">';
+                html += '<div style="width:60px;height:60px;border-radius:50%;border:3px solid ' + scoreColor + ';display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:700;color:' + scoreColor + ';">' + h.health_score + '</div>';
+                html += '<div style="flex:1;">';
+                html += '<div style="font-size:15px;font-weight:600;">' + h.phone_number + '</div>';
+                html += '<div style="display:flex;gap:8px;margin-top:4px;flex-wrap:wrap;">';
+                html += '<span class="gads-badge" style="background:' + riskColor + '20;color:' + riskColor + ';border:1px solid ' + riskColor + '40;">' + riskLabel + '</span>';
+                if (h.carrier) html += '<span class="gads-badge">' + h.carrier + '</span>';
+                if (h.line_type) html += '<span class="gads-badge">' + h.line_type.toUpperCase() + '</span>';
+                if (h.cnam) html += '<span class="gads-badge" style="background:#e8f5e9;color:#1b5e20;">CNAM: ' + h.cnam + '</span>';
+                html += '</div></div></div>';
+                if (h.checks) {
+                    html += '<div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;">';
+                    var checkLabels = {carrier: 'Carrier Lookup', cnam: 'CNAM/Caller ID'};
+                    var checkIcons = {pass: '&#10003;', fail: '&#10007;', warning: '&#9888;', error: '&#10007;', unavailable: '&#8212;'};
+                    var checkColors = {pass: '#1e8e3e', fail: '#d93025', warning: '#f9ab00', error: '#d93025', unavailable: '#999'};
+                    Object.keys(h.checks).forEach(function(k) {
+                        var v = h.checks[k];
+                        html += '<span style="font-size:11px;padding:3px 8px;border-radius:6px;background:' + (checkColors[v]||'#999') + '15;color:' + (checkColors[v]||'#999') + ';border:1px solid ' + (checkColors[v]||'#999') + '30;">' + (checkIcons[v]||'?') + ' ' + (checkLabels[k]||k) + '</span>';
+                    });
+                    html += '</div>';
+                }
+                if (h.issues && h.issues.length > 0) {
+                    html += '<div style="margin-bottom:8px;">';
+                    h.issues.forEach(function(issue) {
+                        html += '<div style="font-size:12px;color:#d93025;padding:3px 0;"><span style="margin-right:4px;">&#9888;</span>' + issue + '</div>';
+                    });
+                    html += '</div>';
+                }
+                if (h.recommendations && h.recommendations.length > 0) {
+                    html += '<div>';
+                    h.recommendations.forEach(function(rec) {
+                        html += '<div style="font-size:12px;color:var(--gads-text-secondary);padding:3px 0;"><span style="margin-right:4px;">&#128161;</span>' + rec + '</div>';
+                    });
+                    html += '</div>';
+                }
+                html += '</div>';
+                return html;
+            }
+
+            function singleHealthCheck() {
+                var input = document.getElementById("healthCheckInput");
+                var number = input.value.trim();
+                if (!number) { showToast("Enter a phone number to check", "warning"); return; }
+                var resultDiv = document.getElementById("healthCheckResult");
+                resultDiv.style.display = "block";
+                resultDiv.innerHTML = '<div style="text-align:center;padding:20px;color:var(--gads-text-secondary);"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation:spin 1s linear infinite;"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg> Analyzing number health...</div>';
+                apiFetch("/api/caller-health", {
+                    method: "POST",
+                    headers: {"Content-Type": "application/json"},
+                    body: JSON.stringify({number: number})
+                }).then(function(r){return r.json();}).then(function(data) {
+                    if (data.error) {
+                        resultDiv.innerHTML = '<div style="padding:12px;color:#d93025;">Error: ' + data.error + '</div>';
+                        return;
+                    }
+                    _numberHealthCache[data.phone_number] = data;
+                    resultDiv.innerHTML = renderHealthCard(data);
+                    if (data.risk_level === 'high' || data.risk_level === 'critical') {
+                        addNotification('warning', 'Spam risk detected for ' + data.phone_number + ': ' + (data.issues[0] || 'High risk'));
+                    }
+                }).catch(function(e){if(e.message==="auth")return;resultDiv.innerHTML='<div style="padding:12px;color:#d93025;">Check failed</div>';});
+            }
+
+            function singleHealthCheckForNumber(number) {
+                var el = document.getElementById("health-" + number.replace(/[^0-9]/g,''));
+                if (el) el.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation:spin 1s linear infinite;"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>';
+                apiFetch("/api/caller-health", {
+                    method: "POST",
+                    headers: {"Content-Type": "application/json"},
+                    body: JSON.stringify({number: number})
+                }).then(function(r){return r.json();}).then(function(data) {
+                    if (data.error) { showToast("Health check failed: " + data.error, "error"); return; }
+                    _numberHealthCache[data.phone_number] = data;
+                    if (el) el.outerHTML = renderHealthBadge(data);
+                    if (data.risk_level === 'high' || data.risk_level === 'critical') {
+                        addNotification('warning', 'Spam alert: ' + data.phone_number + ' is at risk (' + data.health_score + '% health)');
+                        showToast('Warning: ' + data.phone_number + ' may be flagged as spam', 'warning');
+                    } else if (data.health_score >= 80) {
+                        showToast(data.phone_number + ' is healthy (' + data.health_score + '%)', 'success');
+                    } else {
+                        showToast(data.phone_number + ' health: ' + data.health_score + '%', 'info');
+                    }
+                }).catch(function(e){if(e.message==="auth")return;showToast("Health check failed","error");});
+            }
+
+            function healthCheckAllNumbers() {
+                if (_ownedNumbersList.length === 0) { showToast("No numbers to check", "warning"); return; }
+                var numbers = _ownedNumbersList.map(function(n){ return n.phone_number; });
+                if (numbers.length > 20) numbers = numbers.slice(0, 20);
+                var btn = document.getElementById("healthCheckAllBtn");
+                btn.disabled = true;
+                btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation:spin 1s linear infinite;"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg> Checking...';
+                var batchDiv = document.getElementById("healthBatchResults");
+                batchDiv.style.display = "block";
+                batchDiv.innerHTML = '<div style="text-align:center;padding:20px;color:var(--gads-text-secondary);">Analyzing ' + numbers.length + ' number(s)...</div>';
+                apiFetch("/api/caller-health-batch", {
+                    method: "POST",
+                    headers: {"Content-Type": "application/json"},
+                    body: JSON.stringify({numbers: numbers})
+                }).then(function(r){return r.json();}).then(function(data) {
+                    btn.disabled = false;
+                    btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg> Check All My Numbers';
+                    if (data.error) {
+                        batchDiv.innerHTML = '<div style="padding:12px;color:#d93025;">Error: ' + data.error + '</div>';
+                        return;
+                    }
+                    var results = data.results || [];
+                    var spamAlerts = [];
+                    results.forEach(function(r) {
+                        _numberHealthCache[r.phone_number] = r;
+                        if (r.risk_level === 'high' || r.risk_level === 'critical') {
+                            spamAlerts.push(r);
+                        }
+                    });
+                    var html = '<h4 style="font-size:14px;font-weight:600;margin-bottom:12px;">Health Report (' + results.length + ' numbers)</h4>';
+                    var healthy = results.filter(function(r){return r.health_score >= 80;}).length;
+                    var warning = results.filter(function(r){return r.health_score >= 50 && r.health_score < 80;}).length;
+                    var danger = results.filter(function(r){return r.health_score < 50;}).length;
+                    html += '<div style="display:flex;gap:12px;margin-bottom:16px;">';
+                    html += '<div style="padding:10px 16px;border-radius:8px;background:#e8f5e9;flex:1;text-align:center;"><div style="font-size:20px;font-weight:700;color:#1e8e3e;">' + healthy + '</div><div style="font-size:11px;color:#1b5e20;">Healthy</div></div>';
+                    html += '<div style="padding:10px 16px;border-radius:8px;background:#fff3e0;flex:1;text-align:center;"><div style="font-size:20px;font-weight:700;color:#f9ab00;">' + warning + '</div><div style="font-size:11px;color:#e65100;">Warning</div></div>';
+                    html += '<div style="padding:10px 16px;border-radius:8px;background:#ffebee;flex:1;text-align:center;"><div style="font-size:20px;font-weight:700;color:#d93025;">' + danger + '</div><div style="font-size:11px;color:#b71c1c;">At Risk</div></div>';
+                    html += '</div>';
+                    html += '<div style="display:flex;flex-direction:column;gap:10px;">';
+                    results.forEach(function(r) { html += renderHealthCard(r); });
+                    html += '</div>';
+                    batchDiv.innerHTML = html;
+                    loadOwnedNumbers();
+                    if (spamAlerts.length > 0) {
+                        spamAlerts.forEach(function(a) {
+                            addNotification('error', 'SPAM ALERT: ' + a.phone_number + ' health score ' + a.health_score + '% - ' + (a.issues[0] || 'At risk'));
+                        });
+                    }
+                }).catch(function(e){
+                    btn.disabled = false;
+                    btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg> Check All My Numbers';
+                    if(e.message==="auth")return;
+                    batchDiv.innerHTML='<div style="padding:12px;color:#d93025;">Batch check failed</div>';
+                });
             }
 
             function createVoiceApp() {
