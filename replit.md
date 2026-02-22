@@ -1,16 +1,20 @@
 # Open Human - Intelligent Communication at Scale
 
 ## Overview
-A production-ready outbound voicemail drop web application branded as "Open Human". Built with Python + Flask and Telnyx Call Control API. Users upload voicemail audio and phone number lists via a modern dashboard. The system automatically dials numbers, detects answering machines, transfers human-answered calls, and drops voicemail messages.
+A production-ready multi-user outbound voicemail drop web application branded as "Open Human". Built with Python + Flask + PostgreSQL and Telnyx Call Control API. Users sign up via email/password or Google OAuth, then upload voicemail audio and phone number lists via a modern dashboard. The system automatically dials numbers, detects answering machines, transfers human-answered calls, and drops voicemail messages. All data is isolated per-user.
 
 ## Project Architecture
-- **app.py** - Main Flask application with routes, webhooks, campaign control
+- **app.py** - Main Flask application with routes, webhooks, campaign control, authentication
+- **models.py** - SQLAlchemy models (User, UserAppData) with Flask-Login integration
+- **google_auth.py** - Google OAuth blueprint with CSRF protection
+- **welcome_email.py** - Automated welcome email sender for new signups
 - **telnyx_client.py** - Wrapper around Telnyx Call Control REST API
-- **call_manager.py** - Queue-based dialing system with rate limiting
-- **storage.py** - In-memory call state management, campaign config, and persistent call history (JSON)
+- **call_manager.py** - Queue-based dialing system with rate limiting (per-user threads)
+- **storage.py** - Per-user data isolation: campaigns, call history, settings, contacts, DNC, templates (scoped by user_id)
 - **templates/landing.html** - Public landing page (marketing/sales site)
 - **templates/index.html** - Dashboard UI with animated splash screen and polling (auth-protected at /dashboard)
-- **templates/login.html** - Password-protected login page
+- **templates/login.html** - Login/signup page supporting email/password and Google OAuth
+- **templates/profile_setup.html** - Profile setup page for new users (name, avatar)
 - **static/landing.css** - Landing page styles (hero, features, pricing, FAQ, footer, animations, visual effects)
 - **static/style.css** - Dual-theme CSS with blue/cyan gradient branding (dashboard)
 - **static/images/** - Landing page images (dashboard-preview, feature illustrations, hero-bg)
@@ -23,9 +27,20 @@ A production-ready outbound voicemail drop web application branded as "Open Huma
 - **logs/** - Call logs
 - **logs/pvm_state.json** - Personalized VM audio mapping (phone -> audio URL)
 
+## Authentication & Multi-User
+- **Auth methods**: Email/password signup (bcrypt hashing) + Google OAuth
+- **Session management**: Flask-Login with PostgreSQL-backed User model
+- **Per-user data isolation**: All storage functions accept user_id parameter, data stored in user-scoped directories (logs/user_{id}/)
+- **call_control_id → user_id mapping**: Webhooks resolve user context via _cid_to_user in-memory map
+- **Per-user campaign threads**: Each user gets their own dialer thread in call_manager.py
+- **Profile management**: Name, profile image upload, displayed in dashboard avatar menu
+- **Welcome emails**: Automated via Gmail integration on signup
+- **Database**: PostgreSQL with SQLAlchemy (users table, user_app_data table)
+- **Google OAuth**: Requires GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET env vars
+
 ## Key Decisions
 - Event-driven architecture using Telnyx webhooks
-- In-memory state management (no database needed)
+- Per-user in-memory state + file-based persistence scoped by user_id
 - Background thread for rate-limited dialing with two modes: Sequential (1 call per 2 seconds) and Simultaneous (configurable batch size, 2-50 calls at once)
 - Campaign auto-pause on transfer: When a human-answered call is transferred, the campaign pauses (no new calls dialed) until the transfer target answers (call connected to human), then resumes automatically. Supports multiple concurrent transfers in simultaneous mode. Once transferred, duplicate call.answered/AMD events from Telnyx are ignored to prevent re-transfer loops.
 - Transfer leg detection: Webhook events for the transfer leg (new call to transfer number) are identified by matching the destination number against the campaign's transfer number. Transfer legs are fully ignored for AMD/transfer processing to prevent re-transfer loops. Transfer leg answered -> status shows "Connected to a human, speaking now". Transfer leg hangup -> campaign resumes next number.
@@ -102,8 +117,8 @@ A production-ready outbound voicemail drop web application branded as "Open Huma
 - Toast Notifications: slide-in toasts for campaign events
 - Hot Lead Sound Alert: Web Audio API chime on human transfer
 - Drag-and-Drop File Upload: styled drop zones for CSV and audio files
-- Persistent call history saved to logs/call_history.json
-- Password protection using Flask sessions with APP_PASSWORD env var
+- Persistent call history saved to logs/user_{id}/call_history.json (per-user)
+- User authentication via Flask-Login with email/password and Google OAuth
 - Color-coded status badges (green=success, blue=in progress, amber=warning, red=error)
 - Status filter dropdown: All, Successful, Failed, Warnings, In Progress
 - CSV export with Status Description, AMD Result, and Hangup Cause columns
@@ -128,8 +143,10 @@ A production-ready outbound voicemail drop web application branded as "Open Huma
 - `TELNYX_CONNECTION_ID` - Telnyx Call Control connection ID
 - `TELNYX_FROM_NUMBER` - Caller ID phone number
 - `PUBLIC_BASE_URL` - Public URL for webhooks and audio serving (auto-detected from request if available)
-- `APP_PASSWORD` - Dashboard access password
 - `SESSION_SECRET` - Flask session secret key
+- `DATABASE_URL` - PostgreSQL connection string (auto-provided by Replit)
+- `GOOGLE_OAUTH_CLIENT_ID` - Google OAuth client ID (optional, enables Google login)
+- `GOOGLE_OAUTH_CLIENT_SECRET` - Google OAuth client secret (optional)
 
 ## Running
 The app runs on port 5000 with `python app.py`.
