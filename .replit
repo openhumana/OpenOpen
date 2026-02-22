@@ -6,6 +6,7 @@ integrations = ["elevenlabs:1.0.0", "google-mail:1.0.0"]
 
 [nix]
 channel = "stable-25_05"
+packages = ["cargo", "libiconv", "rustc"]
 
 [workflows]
 runButton = "Project"

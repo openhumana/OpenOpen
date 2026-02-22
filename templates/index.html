@@ -153,14 +153,24 @@
                     </button>
                     <div class="gads-avatar-wrap">
                         <div class="gads-avatar" id="avatarBtn" onclick="toggleAvatarMenu()">
-                            <span class="gads-avatar-letter">A</span>
+                            {% if user and user.profile_image_url %}
+                            <img src="{{ user.profile_image_url }}" style="width:100%;height:100%;border-radius:50%;object-fit:cover;" alt="">
+                            {% else %}
+                            <span class="gads-avatar-letter">{{ (user.profile_name or user.email or 'U')[0]|upper if user else 'U' }}</span>
+                            {% endif %}
                         </div>
                         <div class="gads-avatar-menu" id="avatarMenu">
                             <div class="gads-avatar-menu-header">
-                                <div class="gads-avatar-menu-avatar">A</div>
+                                <div class="gads-avatar-menu-avatar">
+                                    {% if user and user.profile_image_url %}
+                                    <img src="{{ user.profile_image_url }}" style="width:100%;height:100%;border-radius:50%;object-fit:cover;" alt="">
+                                    {% else %}
+                                    {{ (user.profile_name or user.email or 'U')[0]|upper if user else 'U' }}
+                                    {% endif %}
+                                </div>
                                 <div>
-                                    <div class="gads-avatar-menu-name">Admin</div>
-                                    <div class="gads-avatar-menu-role">Account Owner</div>
+                                    <div class="gads-avatar-menu-name">{{ user.profile_name or 'User' if user else 'User' }}</div>
+                                    <div class="gads-avatar-menu-role">{{ user.email if user else '' }}</div>
                                 </div>
                             </div>
                             <div class="gads-avatar-menu-divider"></div>

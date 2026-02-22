@@ -11,8 +11,9 @@ import logging
 import threading
 import functools
 from datetime import datetime
-from flask import Flask, request, jsonify, render_template, send_from_directory, session, redirect, url_for
+from flask import Flask, request, jsonify, render_template, send_from_directory, session, redirect, url_for, flash
 from werkzeug.utils import secure_filename
+from flask_login import LoginManager, login_user, logout_user, current_user, login_required as flask_login_required
 import html as html_module
 
 from storage import (
@@ -122,6 +123,25 @@ logger = logging.getLogger("voicemail_app")
 app = Flask(__name__)
 app.secret_key = os.environ.get("SESSION_SECRET", "dev-secret-key")
 
+# ---- Database & Auth Setup ----
+app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get("DATABASE_URL", "sqlite:///app.db")
+app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {"pool_pre_ping": True, "pool_recycle": 300}
+
+from models import db, User, init_db
+init_db(app)
+
+login_manager = LoginManager()
+login_manager.init_app(app)
+login_manager.login_view = "login"
+
+@login_manager.user_loader
+def load_user(user_id):
+    return User.query.get(int(user_id))
+
+from google_auth import google_oauth, google_oauth_available
+app.register_blueprint(google_oauth)
+
 @app.after_request
 def add_no_cache_headers(response):
     if "text/html" in response.content_type or "text/css" in response.content_type or "javascript" in response.content_type:
@@ -140,13 +160,11 @@ APP_PASSWORD = os.environ.get("APP_PASSWORD", "")
 def login_required(f):
     @functools.wraps(f)
     def decorated(*args, **kwargs):
-        if not APP_PASSWORD:
+        if current_user.is_authenticated:
             return f(*args, **kwargs)
-        if not session.get("authenticated"):
-            if request.is_json or request.headers.get("X-Requested-With"):
-                return jsonify({"error": "Not authenticated"}), 401
-            return redirect(url_for("login"))
-        return f(*args, **kwargs)
+        if request.is_json or request.headers.get("X-Requested-With"):
+            return jsonify({"error": "Not authenticated"}), 401
+        return redirect(url_for("login"))
     return decorated
 
 
@@ -298,24 +316,95 @@ ACTION: Reach out within 5 minutes for highest conversion.
 @app.route("/login", methods=["GET", "POST"])
 def login():
     _detect_and_set_base_url()
-    if not APP_PASSWORD:
-        return redirect(url_for("dashboard"))
-    if session.get("authenticated"):
+    if current_user.is_authenticated:
         return redirect(url_for("dashboard"))
     error = None
     if request.method == "POST":
-        pw = request.form.get("password", "")
-        if pw == APP_PASSWORD:
-            session["authenticated"] = True
-            return redirect(url_for("dashboard"))
-        error = "Incorrect password"
-    return render_template("login.html", error=error)
+        email = request.form.get("email", "").strip().lower()
+        password = request.form.get("password", "")
+        if not email or not password:
+            error = "Please enter email and password"
+        else:
+            user = User.query.filter_by(email=email).first()
+            if user and user.check_password(password):
+                login_user(user)
+                return redirect(url_for("dashboard"))
+            else:
+                error = "Invalid email or password"
+    return render_template("login.html", error=error, google_oauth=google_oauth_available)
+
+
+@app.route("/signup", methods=["GET", "POST"])
+def signup():
+    _detect_and_set_base_url()
+    if current_user.is_authenticated:
+        return redirect(url_for("dashboard"))
+    error = None
+    if request.method == "POST":
+        email = request.form.get("email", "").strip().lower()
+        password = request.form.get("password", "")
+        confirm = request.form.get("confirm_password", "")
+        name = request.form.get("name", "").strip()
+        if not email or not password:
+            error = "Email and password are required"
+        elif len(password) < 8:
+            error = "Password must be at least 8 characters"
+        elif password != confirm:
+            error = "Passwords do not match"
+        elif User.query.filter_by(email=email).first():
+            error = "An account with this email already exists"
+        else:
+            user = User(email=email, profile_name=name or None)
+            user.set_password(password)
+            db.session.add(user)
+            db.session.commit()
+            login_user(user)
+            logger.info(f"New user signup: {email}")
+            from welcome_email import send_welcome_email_async
+            send_welcome_email_async(email, name)
+            return redirect(url_for("profile_setup"))
+    return render_template("login.html", signup=True, error=error, google_oauth=google_oauth_available)
+
+
+@app.route("/profile-setup", methods=["GET", "POST"])
+@login_required
+def profile_setup():
+    if request.method == "POST":
+        name = request.form.get("name", "").strip()
+        if name:
+            current_user.profile_name = name
+        if "profile_image" in request.files:
+            file = request.files["profile_image"]
+            if file and file.filename:
+                filename = secure_filename(f"profile_{current_user.id}_{file.filename}")
+                filepath = os.path.join("uploads", filename)
+                file.save(filepath)
+                current_user.profile_image_url = f"/audio/{filename}"
+        db.session.commit()
+        return redirect(url_for("dashboard"))
+    return render_template("profile_setup.html", user=current_user)
 
 
 @app.route("/logout")
 def logout():
-    session.pop("authenticated", None)
+    logout_user()
     return redirect(url_for("landing"))
+
+
+@app.route("/api/user/profile")
+@login_required
+def api_user_profile():
+    return jsonify(current_user.to_dict())
+
+
+@app.route("/api/user/profile", methods=["POST"])
+@login_required
+def api_update_profile():
+    data = request.get_json() or {}
+    if "profile_name" in data:
+        current_user.profile_name = data["profile_name"].strip() or current_user.profile_name
+    db.session.commit()
+    return jsonify(current_user.to_dict())
 
 
 def _detect_and_set_base_url():
@@ -354,7 +443,8 @@ def dashboard():
     """Serve the main dashboard page (requires authentication)."""
     _detect_and_set_base_url()
     telnyx_from = os.environ.get("TELNYX_FROM_NUMBER", "Not set")
-    return render_template("index.html", telnyx_from=telnyx_from)
+    user_data = current_user.to_dict() if current_user.is_authenticated else {}
+    return render_template("index.html", telnyx_from=telnyx_from, user=user_data)
 
 
 # ---- Audio File Serving ----
