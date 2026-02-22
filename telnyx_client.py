@@ -163,6 +163,19 @@ def make_call(number, from_number_override=None):
                     headers=_headers(),
                     timeout=15,
                 )
+        if resp.status_code == 403 and "Outbound Profile" in resp.text:
+            logger.warning("No outbound profile assigned, auto-configuring...")
+            if auto_configure_outbound():
+                refreshed_id = _get_connection_id()
+                if refreshed_id:
+                    payload["connection_id"] = refreshed_id
+                logger.info("Outbound profile configured, retrying call...")
+                resp = requests.post(
+                    f"{TELNYX_API_BASE}/calls",
+                    json=payload,
+                    headers=_headers(),
+                    timeout=15,
+                )
         if resp.status_code != 200:
             error_detail = ""
             try:
@@ -409,6 +422,21 @@ def purchase_number(phone_number, connection_id=None):
 
 
 def create_call_control_app(app_name, webhook_url):
+    outbound_config = {"channel_limit": 50}
+    profiles_result = list_outbound_voice_profiles()
+    profile_id = None
+    if profiles_result.get("success") and profiles_result.get("profiles"):
+        for p in profiles_result["profiles"]:
+            if p.get("enabled", False):
+                profile_id = p["id"]
+                break
+    if not profile_id:
+        create_result = create_outbound_voice_profile()
+        if create_result.get("success"):
+            profile_id = create_result["profile_id"]
+    if profile_id:
+        outbound_config["outbound_voice_profile_id"] = profile_id
+
     payload = {
         "application_name": app_name,
         "webhook_event_url": webhook_url,
@@ -416,9 +444,7 @@ def create_call_control_app(app_name, webhook_url):
         "first_command_timeout": True,
         "first_command_timeout_secs": 30,
         "dtmf_type": "RFC 2833",
-        "outbound": {
-            "channel_limit": 50,
-        },
+        "outbound": outbound_config,
     }
     try:
         resp = requests.post(
@@ -662,6 +688,157 @@ def lookup_numbers_batch(phone_numbers, max_concurrent=5):
 
     logger.info(f"Batch lookup complete: {len(results['reachable'])} reachable, {len(results['unreachable'])} unreachable, {len(results['unknown'])} unknown out of {results['total']}")
     return results
+
+
+def list_outbound_voice_profiles():
+    try:
+        resp = requests.get(
+            f"{TELNYX_API_BASE}/outbound_voice_profiles",
+            params={"page[size]": 50},
+            headers=_headers(),
+            timeout=15,
+        )
+        resp.raise_for_status()
+        profiles = resp.json().get("data", [])
+        results = []
+        for p in profiles:
+            results.append({
+                "id": p.get("id", ""),
+                "name": p.get("name", ""),
+                "enabled": p.get("enabled", False),
+                "created_at": p.get("created_at", ""),
+            })
+        return {"success": True, "profiles": results}
+    except Exception as e:
+        logger.error(f"Failed to list outbound voice profiles: {e}")
+        return {"success": False, "error": str(e)}
+
+
+def create_outbound_voice_profile(name="Open Humana Outbound"):
+    payload = {
+        "name": name,
+        "enabled": True,
+        "whitelisted_destinations": ["US", "CA"],
+        "concurrent_call_limit": 50,
+    }
+    try:
+        resp = requests.post(
+            f"{TELNYX_API_BASE}/outbound_voice_profiles",
+            json=payload,
+            headers=_headers(),
+            timeout=20,
+        )
+        resp.raise_for_status()
+        profile = resp.json().get("data", {})
+        logger.info(f"Outbound voice profile created: {profile.get('id')} - {name}")
+        return {"success": True, "profile_id": profile.get("id"), "name": profile.get("name")}
+    except Exception as e:
+        logger.error(f"Failed to create outbound voice profile: {e}")
+        return {"success": False, "error": str(e)}
+
+
+def assign_outbound_profile_to_app(app_id, profile_id):
+    payload = {
+        "outbound": {
+            "outbound_voice_profile_id": profile_id,
+            "channel_limit": 50,
+        }
+    }
+    try:
+        resp = requests.patch(
+            f"{TELNYX_API_BASE}/call_control_applications/{app_id}",
+            json=payload,
+            headers=_headers(),
+            timeout=15,
+        )
+        resp.raise_for_status()
+        data = resp.json().get("data", {})
+        logger.info(f"Outbound profile {profile_id} assigned to app {app_id}")
+        return {"success": True, "app_id": data.get("id")}
+    except Exception as e:
+        logger.error(f"Failed to assign outbound profile to app: {e}")
+        return {"success": False, "error": str(e)}
+
+
+def auto_configure_outbound():
+    """
+    Automatically ensure the Call Control App has an outbound voice profile.
+    Creates one if none exist, assigns it if not already assigned.
+    Configures ALL apps that lack an outbound profile.
+    Returns True if the active connection's app is configured, False otherwise.
+    """
+    try:
+        resp = requests.get(
+            f"{TELNYX_API_BASE}/call_control_applications",
+            params={"page[size]": 50},
+            headers=_headers(),
+            timeout=15,
+        )
+        resp.raise_for_status()
+        apps = resp.json().get("data", [])
+        if not apps:
+            logger.warning("No Call Control Applications found")
+            return False
+
+        connection_id = _get_connection_id()
+        target_app = None
+        apps_needing_profile = []
+        for app in apps:
+            if app.get("id") == connection_id:
+                target_app = app
+            outbound = app.get("outbound", {}) or {}
+            if not outbound.get("outbound_voice_profile_id"):
+                apps_needing_profile.append(app)
+
+        if not target_app:
+            target_app = apps[0]
+            logger.warning(f"Active connection {connection_id} not found in apps, using first app {target_app.get('id')}")
+            global _resolved_connection_id
+            _resolved_connection_id = target_app.get("id")
+
+        if not apps_needing_profile:
+            logger.info(f"App {target_app.get('id')} already has outbound profile configured")
+            return True
+
+        profiles_result = list_outbound_voice_profiles()
+        profile_id = None
+        if profiles_result.get("success") and profiles_result.get("profiles"):
+            for p in profiles_result["profiles"]:
+                if p.get("enabled", False):
+                    profile_id = p["id"]
+                    logger.info(f"Using existing outbound profile: {profile_id}")
+                    break
+
+        if not profile_id:
+            create_result = create_outbound_voice_profile()
+            if create_result.get("success"):
+                profile_id = create_result["profile_id"]
+                logger.info(f"Created new outbound profile: {profile_id}")
+            else:
+                logger.error(f"Failed to create outbound profile: {create_result.get('error')}")
+                return False
+
+        target_configured = False
+        for app_to_fix in apps_needing_profile:
+            assign_result = assign_outbound_profile_to_app(app_to_fix.get("id"), profile_id)
+            if assign_result.get("success"):
+                logger.info(f"Outbound profile assigned to app {app_to_fix.get('id')}")
+                if app_to_fix.get("id") == target_app.get("id"):
+                    target_configured = True
+            else:
+                logger.error(f"Failed to assign outbound profile to app {app_to_fix.get('id')}: {assign_result.get('error')}")
+
+        target_outbound = (target_app.get("outbound", {}) or {}).get("outbound_voice_profile_id")
+        if target_outbound or target_configured:
+            logger.info(f"Auto-configured outbound profile for active app {target_app.get('id')}")
+            return True
+        else:
+            logger.error(f"Active app {target_app.get('id')} still has no outbound profile")
+            return False
+
+    except Exception as e:
+        logger.error(f"Auto-configure outbound failed: {e}")
+        return False
 
 
 def get_number_order_status(order_id):

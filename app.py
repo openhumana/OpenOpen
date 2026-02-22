@@ -88,6 +88,7 @@ from telnyx_client import (
     assign_number_to_app, list_owned_numbers, release_number,
     list_call_control_apps, get_number_order_status,
     lookup_number, lookup_numbers_batch,
+    auto_configure_outbound,
 )
 from call_manager import start_dialer
 from personalized_vm import (
@@ -750,8 +751,9 @@ def test_call():
     audio = camp.get("audio_url") or vm_url
     set_campaign(audio, transfer_num, [number], dial_mode="sequential", batch_size=1, user_id=current_user.id)
 
-    logger.info(f"Placing test call to {number}")
-    call_control_id, call_error = make_call(number)
+    from_number = request.form.get("from_number", "").strip() or None
+    logger.info(f"Placing test call to {number}" + (f" from {from_number}" if from_number else ""))
+    call_control_id, call_error = make_call(number, from_number_override=from_number)
 
     if call_control_id:
         create_call_state(call_control_id, number, user_id=current_user.id)
@@ -2035,6 +2037,11 @@ def _init_app():
     print("=" * 60)
     conn_id = validate_connection_id()
     print(f"  Using Connection ID: {conn_id}")
+    print("=" * 60)
+    if auto_configure_outbound():
+        print("  Outbound voice profile: Configured")
+    else:
+        print("  Outbound voice profile: Not configured (outbound calls may fail)")
     print("=" * 60)
     start_scheduler()
 

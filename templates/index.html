@@ -956,6 +956,13 @@
                         <div class="gads-input-row" style="margin-top:8px;">
                             <input type="text" id="testNumber" class="gads-input" placeholder="Number to call: +15551234567" maxlength="16">
                             <input type="text" id="testTransferNumber" class="gads-input" placeholder="Transfer to: +15559876543" maxlength="16">
+                        </div>
+                        <div class="gads-input-row" style="margin-top:8px;align-items:center;">
+                            <label style="margin:0;font-size:13px;white-space:nowrap;">Call from:</label>
+                            <select id="testFromNumber" class="gads-select" style="max-width:240px;">
+                                <option value="">Default ({{ telnyx_from }})</option>
+                            </select>
+                            <button type="button" class="gads-btn gads-btn-outline gads-btn-sm" onclick="loadTestFromNumbers()" style="font-size:11px;">Refresh</button>
                             <button type="button" class="gads-btn gads-btn-primary gads-btn-sm" id="testCallBtn">Start Test Call</button>
                         </div>
                         <div class="test-results-box" id="testResultsBox" style="display:none;margin-top:12px;">
@@ -1132,6 +1139,7 @@
                 if (typeof loadTemplates === 'function') loadTemplates();
                 if (typeof loadWebhookStatus === 'function') loadWebhookStatus();
                 if (typeof presetLoadVoices === 'function') presetLoadVoices();
+                if (typeof loadTestFromNumbers === 'function') loadTestFromNumbers();
             }
             if (page === 'voicemails') {
                 if (typeof loadVmSettings === 'function') loadVmSettings();
@@ -2131,6 +2139,8 @@
                 var formData = new FormData();
                 formData.append("test_number", number);
                 formData.append("transfer_number", transferNum);
+                var testFrom = document.getElementById("testFromNumber").value;
+                if (testFrom) formData.append("from_number", testFrom);
                 apiFetch("/test_call", { method: "POST", body: formData })
                     .then(function(r) { return r.json(); })
                     .then(function(data) {
@@ -3382,20 +3392,34 @@
                 }).catch(function(e){if(e.message==="auth")return;});
             }
 
-            function loadCampaignNumbers() {
-                var sel = document.getElementById("campaignFromNumber");
+            function _populateNumberDropdown(selId, data) {
+                var sel = document.getElementById(selId);
                 var current = sel.value;
+                var nums = (data.numbers || []).filter(function(n){ return n.status === "active"; });
+                sel.innerHTML = '<option value="">Default ({{ telnyx_from }})</option>';
+                nums.forEach(function(n) {
+                    var opt = document.createElement("option");
+                    opt.value = n.phone_number;
+                    opt.textContent = n.phone_number + (n.connection_name ? " (" + n.connection_name + ")" : "");
+                    sel.appendChild(opt);
+                });
+                if (current) sel.value = current;
+            }
+
+            var _cachedOwnedNumbers = null;
+            function _fetchOwnedNumbers(cb) {
                 apiFetch("/api/numbers/owned").then(function(r){return r.json();}).then(function(data) {
-                    var nums = (data.numbers || []).filter(function(n){ return n.status === "active"; });
-                    sel.innerHTML = '<option value="">Default ({{ telnyx_from }})</option>';
-                    nums.forEach(function(n) {
-                        var opt = document.createElement("option");
-                        opt.value = n.phone_number;
-                        opt.textContent = n.phone_number + (n.connection_name ? " (" + n.connection_name + ")" : "");
-                        sel.appendChild(opt);
-                    });
-                    if (current) sel.value = current;
+                    _cachedOwnedNumbers = data;
+                    cb(data);
                 }).catch(function(e){if(e.message==="auth")return;});
+            }
+
+            function loadCampaignNumbers() {
+                _fetchOwnedNumbers(function(data) { _populateNumberDropdown("campaignFromNumber", data); });
+            }
+
+            function loadTestFromNumbers() {
+                _fetchOwnedNumbers(function(data) { _populateNumberDropdown("testFromNumber", data); });
             }
 
             function createVoiceApp() {
