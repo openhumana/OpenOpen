@@ -55,6 +55,51 @@ def supabase_sign_up(email: str, password: str, name: str = None):
         return None, error_msg
 
 
+def supabase_send_otp(email: str):
+    client = get_client()
+    if not client:
+        return False, "Supabase not configured"
+    try:
+        client.auth.sign_in_with_otp({
+            "email": email,
+            "options": {
+                "should_create_user": True,
+            }
+        })
+        return True, None
+    except Exception as e:
+        error_msg = str(e)
+        logger.error(f"Supabase OTP send error: {error_msg}")
+        if "rate" in error_msg.lower() or "limit" in error_msg.lower():
+            return False, "Please wait before requesting another code."
+        return False, error_msg
+
+
+def supabase_verify_otp(email: str, token: str):
+    client = get_client()
+    if not client:
+        return None, "Supabase not configured"
+    try:
+        response = client.auth.verify_otp({
+            "email": email,
+            "token": token,
+            "type": "email",
+        })
+        if response.user and response.session:
+            return {
+                "user_id": response.user.id,
+                "email": response.user.email,
+                "access_token": response.session.access_token,
+            }, None
+        return None, "Invalid or expired code"
+    except Exception as e:
+        error_msg = str(e)
+        logger.error(f"Supabase OTP verify error: {error_msg}")
+        if "expired" in error_msg.lower() or "invalid" in error_msg.lower():
+            return None, "Invalid or expired code. Please request a new one."
+        return None, "Verification failed. Please try again."
+
+
 def supabase_sign_in(email: str, password: str):
     client = get_client()
     if not client:

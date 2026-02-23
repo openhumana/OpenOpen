@@ -145,7 +145,7 @@ def load_user(user_id):
 from google_auth import google_oauth, google_oauth_available
 app.register_blueprint(google_oauth)
 
-from supa_auth import supabase_available, supabase_sign_up, supabase_sign_in
+from supa_auth import supabase_available, supabase_sign_up, supabase_sign_in, supabase_send_otp, supabase_verify_otp
 
 @app.after_request
 def add_no_cache_headers(response):
@@ -400,19 +400,15 @@ def signup():
         elif supabase_available:
             result, err = supabase_sign_up(email, password, name)
             if result:
-                if result.get("needs_confirmation"):
-                    info_message = "Check your email to confirm your account before logging in."
-                    return render_template("login.html", signup=True, error=None, info_message=info_message, google_oauth=google_oauth_available)
-                user = User.query.filter_by(email=email).first()
-                if not user:
-                    user = User(email=email, profile_name=name or None, supabase_id=result["user_id"])
-                    db.session.add(user)
-                    db.session.commit()
-                login_user(user)
-                logger.info(f"New user signup via Supabase: {email}")
-                from welcome_email import send_welcome_email_async
-                send_welcome_email_async(email, name)
-                return redirect(url_for("profile_setup"))
+                otp_sent, otp_err = supabase_send_otp(email)
+                if not otp_sent:
+                    logger.warning(f"OTP send failed after signup for {email}: {otp_err}")
+                    error = otp_err or "Failed to send verification code. Please try again."
+                else:
+                    session["pending_verify_email"] = email
+                    session["pending_verify_name"] = name or ""
+                    session["pending_verify_supa_id"] = result["user_id"]
+                    return redirect(url_for("verify_otp_page"))
             else:
                 error = err or "Signup failed"
         else:
@@ -428,7 +424,52 @@ def signup():
                 from welcome_email import send_welcome_email_async
                 send_welcome_email_async(email, name)
                 return redirect(url_for("profile_setup"))
-    return render_template("login.html", signup=True, error=error, info_message=info_message if request.method == "POST" else None, google_oauth=google_oauth_available)
+    return render_template("login.html", signup=True, error=error, info_message=info_message, google_oauth=google_oauth_available)
+
+
+@app.route("/verify-otp", methods=["GET", "POST"])
+def verify_otp_page():
+    email = session.get("pending_verify_email")
+    if not email:
+        return redirect(url_for("signup"))
+    error = None
+    if request.method == "POST":
+        otp_code = request.form.get("otp_code", "").strip()
+        if not otp_code or len(otp_code) != 6:
+            error = "Please enter the 6-digit code from your email"
+        else:
+            result, err = supabase_verify_otp(email, otp_code)
+            if result:
+                name = session.pop("pending_verify_name", "")
+                supa_id = session.pop("pending_verify_supa_id", result["user_id"])
+                session.pop("pending_verify_email", None)
+                user = User.query.filter_by(email=email).first()
+                if not user:
+                    user = User(email=email, profile_name=name or None, supabase_id=supa_id)
+                    db.session.add(user)
+                    db.session.commit()
+                elif not user.supabase_id:
+                    user.supabase_id = supa_id
+                    db.session.commit()
+                login_user(user)
+                logger.info(f"New user signup via Supabase OTP: {email}")
+                from welcome_email import send_welcome_email_async
+                send_welcome_email_async(email, name)
+                return redirect(url_for("profile_setup"))
+            else:
+                error = err or "Invalid or expired code"
+    return render_template("verify_otp.html", email=email, error=error)
+
+
+@app.route("/resend-otp", methods=["POST"])
+def resend_otp():
+    email = session.get("pending_verify_email")
+    if not email:
+        return jsonify({"success": False, "error": "No pending verification"}), 400
+    success, err = supabase_send_otp(email)
+    if success:
+        return jsonify({"success": True, "message": "A new code has been sent to your email"})
+    return jsonify({"success": False, "error": err or "Failed to resend code"}), 400
 
 
 @app.route("/profile-setup", methods=["GET", "POST"])
