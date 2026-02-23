@@ -400,15 +400,10 @@ def signup():
         elif supabase_available:
             result, err = supabase_sign_up(email, password, name)
             if result:
-                otp_sent, otp_err = supabase_send_otp(email)
-                if not otp_sent:
-                    logger.warning(f"OTP send failed after signup for {email}: {otp_err}")
-                    error = otp_err or "Failed to send verification code. Please try again."
-                else:
-                    session["pending_verify_email"] = email
-                    session["pending_verify_name"] = name or ""
-                    session["pending_verify_supa_id"] = result["user_id"]
-                    return redirect(url_for("verify_otp_page"))
+                session["pending_verify_email"] = email
+                session["pending_verify_name"] = name or ""
+                session["pending_verify_supa_id"] = result["user_id"]
+                return redirect(url_for("verify_otp_page"))
             else:
                 error = err or "Signup failed"
         else:

@@ -83,7 +83,7 @@ def supabase_verify_otp(email: str, token: str):
         response = client.auth.verify_otp({
             "email": email,
             "token": token,
-            "type": "email",
+            "type": "signup",
         })
         if response.user and response.session:
             return {
