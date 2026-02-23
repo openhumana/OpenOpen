@@ -427,17 +427,14 @@ def signup():
         elif password != confirm:
             error = "Passwords do not match"
         elif supabase_available:
-            result, err = supabase_sign_up(email, password, name)
-            if result:
-                otp_sent, otp_err = supabase_send_otp(email)
-                if not otp_sent:
-                    logger.warning(f"OTP send failed after signup for {email}: {otp_err}")
+            otp_sent, otp_err = supabase_send_otp(email)
+            if otp_sent:
                 session["pending_verify_email"] = email
                 session["pending_verify_name"] = name or ""
-                session["pending_verify_supa_id"] = result["user_id"]
+                session["pending_verify_password"] = password
                 return redirect(url_for("verify_otp_page"))
             else:
-                error = err or "Signup failed"
+                error = otp_err or "Failed to send verification code"
         else:
             if User.query.filter_by(email=email).first():
                 error = "An account with this email already exists"
@@ -468,15 +465,33 @@ def verify_otp_page():
             result, err = supabase_verify_otp(email, otp_code)
             if result:
                 name = session.pop("pending_verify_name", "")
-                supa_id = session.pop("pending_verify_supa_id", result["user_id"])
+                password = session.pop("pending_verify_password", "")
+                supa_id = result["user_id"]
                 session.pop("pending_verify_email", None)
+                session.pop("pending_verify_supa_id", None)
+                if password and result.get("access_token"):
+                    try:
+                        from supabase import create_client
+                        temp_client = create_client(os.environ.get("SUPABASE_URL", ""), os.environ.get("SUPABASE_ANON_KEY", ""))
+                        temp_client.auth._headers = {
+                            **temp_client.auth._headers,
+                            "Authorization": f"Bearer {result['access_token']}"
+                        }
+                        temp_client.auth.update_user({"password": password})
+                    except Exception as pw_err:
+                        logger.warning(f"Failed to set password for {email}: {pw_err}")
                 user = User.query.filter_by(email=email).first()
                 if not user:
                     user = User(email=email, profile_name=name or None, supabase_id=supa_id)
+                    if password:
+                        user.set_password(password)
                     db.session.add(user)
                     db.session.commit()
-                elif not user.supabase_id:
-                    user.supabase_id = supa_id
+                else:
+                    if not user.supabase_id:
+                        user.supabase_id = supa_id
+                    if password:
+                        user.set_password(password)
                     db.session.commit()
                 login_user(user)
                 logger.info(f"New user signup via Supabase OTP: {email}")
