@@ -181,6 +181,35 @@ def landing():
     return render_template("landing.html")
 
 
+@app.route("/about")
+def about_page():
+    return render_template("about.html")
+
+@app.route("/blog-page")
+def blog_page():
+    return render_template("blog_page.html")
+
+@app.route("/help")
+def help_page():
+    return render_template("help.html")
+
+@app.route("/compliance")
+def compliance_page():
+    return render_template("compliance.html")
+
+@app.route("/privacy")
+def privacy_page():
+    return render_template("privacy.html")
+
+@app.route("/terms")
+def terms_page():
+    return render_template("terms.html")
+
+@app.route("/contact")
+def contact_page():
+    return render_template("contact.html")
+
+
 # ---- Lead Capture ----
 @app.route("/api/lead", methods=["POST"])
 def api_lead():

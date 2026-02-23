@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Blog — Open Humana</title>
+  <meta name="description" content="Insights on the future of digital employment from Open Humana.">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='50' font-weight='bold' font-family='Arial'>OH</text></svg>">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/landing.css">
+  <link rel="stylesheet" href="/static/pages.css">
+</head>
+<body>
+
+  <nav class="nav scrolled">
+    <div class="nav-inner">
+      <a href="/" class="nav-brand">
+        <img src="/static/images/logo.png" alt="Open Humana" style="height:146px;width:auto;">
+      </a>
+      <div class="nav-links" id="navLinks">
+        <a href="/#features">Features</a>
+        <a href="/#how-it-works">How It Works</a>
+        <a href="/#testimonials">Testimonials</a>
+        <a href="/#pricing">Pricing</a>
+        <a href="/#blog">Resources</a>
+      </div>
+      <div class="nav-right">
+        <a href="/login" class="nav-login">Log in</a>
+        <a href="/" class="nav-cta">Get Started</a>
+      </div>
+      <button class="nav-mobile" id="navMobile" aria-label="Menu">
+        <span></span><span></span><span></span>
+      </button>
+    </div>
+  </nav>
+
+  <section class="subpage-hero">
+    <h1>Blog</h1>
+    <p>Insights on the future of digital employment</p>
+  </section>
+
+  <div class="subpage-content">
+    <div class="blog-placeholder">
+      <div class="blog-placeholder-card">
+        <div class="blog-placeholder-img">
+          <span class="blog-coming-soon">Coming Soon</span>
+        </div>
+        <div class="blog-placeholder-body">
+          <div class="blog-placeholder-meta">
+            <span class="blog-placeholder-tag">Industry</span>
+            <span class="blog-placeholder-date">Mar 2026</span>
+          </div>
+          <h3>Why Your Next Sales Hire Should Be Digital</h3>
+        </div>
+      </div>
+
+      <div class="blog-placeholder-card">
+        <div class="blog-placeholder-img">
+          <span class="blog-coming-soon">Coming Soon</span>
+        </div>
+        <div class="blog-placeholder-body">
+          <div class="blog-placeholder-meta">
+            <span class="blog-placeholder-tag">Productivity</span>
+            <span class="blog-placeholder-date">Mar 2026</span>
+          </div>
+          <h3>The End of the 9-to-5: How Digital Employees Work 24/7</h3>
+        </div>
+      </div>
+
+      <div class="blog-placeholder-card">
+        <div class="blog-placeholder-img">
+          <span class="blog-coming-soon">Coming Soon</span>
+        </div>
+        <div class="blog-placeholder-body">
+          <div class="blog-placeholder-meta">
+            <span class="blog-placeholder-tag">Future of Work</span>
+            <span class="blog-placeholder-date">Mar 2026</span>
+          </div>
+          <h3>Human-AI Collaboration: The Future of the Modern Workforce</h3>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <footer class="footer">
+    <div class="footer-inner">
+      <div class="footer-top">
+        <div class="footer-brand-col">
+          <a href="/" class="nav-brand">
+            <img src="/static/images/logo.png" alt="Open Humana" style="height:146px;width:auto;">
+          </a>
+          <p class="footer-desc">Your Digital Employee Agency. Hire AI-powered digital employees that scale your business.</p>
+        </div>
+        <div class="footer-cols">
+          <div class="footer-col">
+            <h4>Company</h4>
+            <a href="/about">About Us</a>
+            <a href="/blog-page">Blog</a>
+          </div>
+          <div class="footer-col">
+            <h4>Support</h4>
+            <a href="/help">Help Center</a>
+            <a href="/help">FAQs</a>
+            <a href="/contact">Contact Support</a>
+          </div>
+          <div class="footer-col">
+            <h4>Legal</h4>
+            <a href="/privacy">Privacy Policy</a>
+            <a href="/terms">Terms of Service</a>
+            <a href="/compliance">TCPA Compliance</a>
+          </div>
+        </div>
+        <div class="footer-newsletter">
+          <h4>Subscribe for Updates</h4>
+          <p>Get the latest news and tips directly in your inbox.</p>
+          <form class="newsletter-form" onsubmit="event.preventDefault();this.querySelector('.nl-msg').style.display='block';this.querySelector('input').value='';">
+            <div class="nl-input-wrap">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="nl-icon"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+              <input type="email" placeholder="Enter your email" required>
+              <button type="submit" class="nl-btn">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+              </button>
+            </div>
+            <span class="nl-msg" style="display:none;">Thanks for subscribing!</span>
+          </form>
+        </div>
+      </div>
+      <div class="footer-bottom">
+        <span>&copy; 2026 Open Humana. All rights reserved.</span>
+      </div>
+    </div>
+  </footer>
+
+  <script>
+    document.getElementById('navMobile').addEventListener('click', function() {
+      this.classList.toggle('active');
+      document.getElementById('navLinks').classList.toggle('open');
+    });
+  </script>
+
+</body>
+</html>

@@ -26,6 +26,7 @@ The application is built on a Python Flask framework with PostgreSQL for data pe
 - **Reporting**: Call analytics with Chart.js charts and daily email reports for hot leads and failed calls.
 - **Environment Management**: Auto-detection of webhook base URL for flexible deployment.
 - **Frontend Interaction**: Features like drag-and-drop file uploads, floating Notepad widget, and an iPhone-style live dialer widget enhance user interaction.
+- **Sub-Pages**: About Us, Blog (coming soon placeholders), Help Center (searchable FAQ accordion), TCPA Compliance (legal disclaimer), Privacy Policy, Terms of Service, and Contact Support pages. All share the landing page header/footer and use `static/pages.css` for sub-page-specific styles.
 
 ## External Dependencies
 - **Telnyx**: Primary API for Call Control, Number Lookup, and Speech-to-Text (STT).
