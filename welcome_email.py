@@ -90,16 +90,16 @@ def _build_welcome_html(user_name, user_email):
       <p style="margin:0 0 12px;font-size:12px;font-weight:bold;color:#111;font-family:Georgia,serif;text-transform:uppercase;letter-spacing:1.5px;">Compensation &amp; Benefits</p>
       <table width="100%" cellpadding="0" cellspacing="0" style="font-family:Georgia,serif;font-size:13px;color:#333;">
         <tr>
-          <td style="padding:4px 0;" width="180"><strong>Annual Salary:</strong></td>
-          <td style="padding:4px 0;">$1,188 ($99 billed monthly)</td>
+          <td style="padding:4px 0;" width="180"><strong>Salary:</strong></td>
+          <td style="padding:4px 0;">$99/month</td>
         </tr>
         <tr>
-          <td style="padding:4px 0;"><strong>Insurance / Taxes:</strong></td>
-          <td style="padding:4px 0;">Fully waived</td>
+          <td style="padding:4px 0;"><strong>Benefits Required:</strong></td>
+          <td style="padding:4px 0;">None</td>
         </tr>
         <tr>
-          <td style="padding:4px 0;"><strong>PTO / Sick Leave:</strong></td>
-          <td style="padding:4px 0;">None required</td>
+          <td style="padding:4px 0;"><strong>Overhead Costs:</strong></td>
+          <td style="padding:4px 0;">None</td>
         </tr>
       </table>
     </td></tr>
@@ -171,9 +171,9 @@ CORE COMPETENCIES
 - Persistence & Follow-Up Automation
 
 COMPENSATION & BENEFITS
-Annual Salary: $1,188 ($99 billed monthly)
-Insurance / Taxes: Fully waived
-PTO / Sick Leave: None required
+Salary: $99/month
+Benefits Required: None
+Overhead Costs: None
 
 ---
 
