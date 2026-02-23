@@ -12,73 +12,64 @@
   <link rel="stylesheet" href="/static/landing.css">
   <link rel="stylesheet" href="/static/pages.css">
 </head>
-<body>
+<body class="subpage">
 
   <nav class="nav scrolled">
     <div class="nav-inner">
       <a href="/" class="nav-brand">
         <img src="/static/images/logo.png" alt="Open Humana" style="height:146px;width:auto;">
       </a>
-      <div class="nav-links" id="navLinks">
+      <div class="nav-links">
         <a href="/#features">Features</a>
         <a href="/#how-it-works">How It Works</a>
-        <a href="/#testimonials">Testimonials</a>
         <a href="/#pricing">Pricing</a>
-        <a href="/#blog">Resources</a>
+        <a href="/about">About</a>
+        <a href="/help">Help</a>
       </div>
-      <div class="nav-right">
+      <div class="nav-actions">
         <a href="/login" class="nav-login">Log in</a>
-        <a href="/" class="nav-cta">Get Started</a>
+        <a href="/register" class="nav-cta">Get Started</a>
       </div>
-      <button class="nav-mobile" id="navMobile" aria-label="Menu">
-        <span></span><span></span><span></span>
-      </button>
     </div>
   </nav>
 
   <section class="subpage-hero">
-    <h1>Blog</h1>
-    <p>Insights on the future of digital employment</p>
+    <h1>The Open Humana Blog</h1>
+    <p>Insights, strategies, and updates on the future of AI-powered outbound sales and digital employment.</p>
   </section>
 
   <div class="subpage-content">
-    <div class="blog-placeholder">
-      <div class="blog-placeholder-card">
-        <div class="blog-placeholder-img">
-          <span class="blog-coming-soon">Coming Soon</span>
+    <div class="blog-grid">
+      <div class="blog-placeholder">
+        <div class="blog-img">
+          <span class="blog-badge">Coming Soon</span>
         </div>
-        <div class="blog-placeholder-body">
-          <div class="blog-placeholder-meta">
-            <span class="blog-placeholder-tag">Strategy</span>
-            <span class="blog-placeholder-date">Feb 15, 2026</span>
-          </div>
-          <h3>Why Your Next Sales Hire Should Be Digital</h3>
+        <div class="blog-body">
+          <h3>The Future of Outbound Sales</h3>
+          <p>Discover how AI-powered digital employees are reshaping the landscape of outbound sales and why early adopters are seeing 30x productivity gains.</p>
+          <span class="blog-link">Read More &rarr;</span>
         </div>
       </div>
 
-      <div class="blog-placeholder-card">
-        <div class="blog-placeholder-img">
-          <span class="blog-coming-soon">Coming Soon</span>
+      <div class="blog-placeholder">
+        <div class="blog-img">
+          <span class="blog-badge">Coming Soon</span>
         </div>
-        <div class="blog-placeholder-body">
-          <div class="blog-placeholder-meta">
-            <span class="blog-placeholder-tag">Culture</span>
-            <span class="blog-placeholder-date">Feb 10, 2026</span>
-          </div>
-          <h3>The End of the 9-to-5: How Digital Employees Work 24/7</h3>
+        <div class="blog-body">
+          <h3>Why AI-Powered Voicemail Drops Convert</h3>
+          <p>Learn the science behind personalized voicemail drops and how hyper-targeted messaging drives significantly higher callback rates.</p>
+          <span class="blog-link">Read More &rarr;</span>
         </div>
       </div>
 
-      <div class="blog-placeholder-card">
-        <div class="blog-placeholder-img">
-          <span class="blog-coming-soon">Coming Soon</span>
+      <div class="blog-placeholder">
+        <div class="blog-img">
+          <span class="blog-badge">Coming Soon</span>
         </div>
-        <div class="blog-placeholder-body">
-          <div class="blog-placeholder-meta">
-            <span class="blog-placeholder-tag">Innovation</span>
-            <span class="blog-placeholder-date">Feb 5, 2026</span>
-          </div>
-          <h3>Human-AI Collaboration: The Future of the Modern Workforce</h3>
+        <div class="blog-body">
+          <h3>Building Your First Campaign</h3>
+          <p>A step-by-step guide to setting up your first automated dialing campaign with Open Humana — from contact upload to launch.</p>
+          <span class="blog-link">Read More &rarr;</span>
         </div>
       </div>
     </div>
@@ -111,13 +102,6 @@
       </div>
     </div>
   </footer>
-
-  <script>
-    document.getElementById('navMobile').addEventListener('click', function() {
-      this.classList.toggle('active');
-      document.getElementById('navLinks').classList.toggle('open');
-    });
-  </script>
 
 </body>
 </html>
