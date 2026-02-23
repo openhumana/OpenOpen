@@ -17,52 +17,47 @@ def _build_welcome_html(user_name, user_email):
     return f"""<!DOCTYPE html>
 <html>
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
-<body style="margin:0;padding:0;background:#0a0a1a;font-family:'Helvetica Neue',Arial,sans-serif;">
-<table width="100%" cellpadding="0" cellspacing="0" style="background:#0a0a1a;padding:40px 20px;">
+<body style="margin:0;padding:0;background:#f0f0f3;font-family:'Helvetica Neue',Arial,sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f0f0f3;padding:40px 20px;">
 <tr><td align="center">
-<table width="640" cellpadding="0" cellspacing="0" style="background:#0a0a1a;">
+<table width="640" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 4px 32px rgba(0,0,0,0.08);">
 
-<tr><td style="padding:32px 0;text-align:center;">
-  <img src="{BASE_URL}/static/images/logo.png" alt="Open Humana" style="height:80px;width:auto;" />
+<tr><td style="padding:36px 52px 28px;text-align:center;background:#ffffff;border-bottom:1px solid #eee;">
+  <img src="{BASE_URL}/static/images/logo.png" alt="Open Humana" style="height:90px;width:auto;" />
 </td></tr>
 
-<tr><td>
-<table width="100%" cellpadding="0" cellspacing="0" style="background:#111118;border:1px solid rgba(255,255,255,0.08);border-radius:16px;overflow:hidden;">
-
-<tr><td style="background:linear-gradient(135deg,#0a0a1a 0%,#1a1a2e 50%,#0a0a1a 100%);padding:48px 52px 36px;text-align:center;">
-  <p style="margin:0 0 6px;font-size:12px;color:rgba(255,255,255,0.35);font-family:'Helvetica Neue',Arial,sans-serif;text-transform:uppercase;letter-spacing:2px;">Cover Letter</p>
-  <h1 style="margin:0;font-size:28px;font-weight:800;color:#ffffff;letter-spacing:-0.5px;font-family:'Helvetica Neue',Arial,sans-serif;">Application for Senior Outbound Specialist</h1>
-  <p style="margin:12px auto 0;font-size:14px;color:rgba(255,255,255,0.5);max-width:400px;line-height:1.6;">Submitted by Alex &mdash; Your Digital Teammate</p>
+<tr><td style="padding:36px 52px 0;background:#ffffff;">
+  <p style="margin:0;font-size:12px;color:#999;font-family:'Helvetica Neue',Arial,sans-serif;text-transform:uppercase;letter-spacing:2px;">Cover Letter</p>
 </td></tr>
 
-<tr><td style="padding:40px 52px 0;">
-  <p style="margin:0 0 20px;font-size:15px;color:rgba(255,255,255,0.85);line-height:1.85;font-family:'Helvetica Neue',Arial,sans-serif;">Dear {name},</p>
-  <p style="margin:0;font-size:15px;color:rgba(255,255,255,0.7);line-height:1.85;font-family:'Helvetica Neue',Arial,sans-serif;">I am writing to express my formal interest in joining your sales department as a <span style="color:#fff;font-weight:600;">Senior Outbound Specialist</span>. After analyzing the current lead-generation landscape, I recognize that consistency is the most significant barrier to scale. My professional background is built on a single principle: <span style="color:#fff;font-weight:600;">Zero Downtime</span>. I am prepared to handle the heavy lifting of your outreach operations so your executive team can focus on closing and strategy.</p>
+<tr><td style="padding:16px 52px 0;background:#ffffff;">
+  <p style="margin:0 0 20px;font-size:15px;color:#222;line-height:1.85;font-family:'Helvetica Neue',Arial,sans-serif;">Dear {name},</p>
+  <p style="margin:0;font-size:15px;color:#444;line-height:1.85;font-family:'Helvetica Neue',Arial,sans-serif;">I am writing to express my formal interest in joining your sales department as a <strong style="color:#111;">Senior Outbound Specialist</strong>. After analyzing the current lead-generation landscape, I recognize that consistency is the most significant barrier to scale. My professional background is built on a single principle: <strong style="color:#111;">Zero Downtime</strong>. I am prepared to handle the heavy lifting of your outreach operations so your executive team can focus on closing and strategy.</p>
 </td></tr>
 
-<tr><td style="padding:20px 52px 32px;">
-  <p style="margin:0;font-size:15px;color:rgba(255,255,255,0.7);line-height:1.85;font-family:'Helvetica Neue',Arial,sans-serif;">Please find my resume enclosed below for your review.</p>
-  <p style="margin:16px 0 0;font-size:15px;color:rgba(255,255,255,0.7);font-family:'Helvetica Neue',Arial,sans-serif;">Respectfully,</p>
-  <p style="margin:4px 0 0;font-size:16px;color:#ffffff;font-weight:700;font-family:'Helvetica Neue',Arial,sans-serif;">Alex</p>
+<tr><td style="padding:20px 52px 28px;background:#ffffff;">
+  <p style="margin:0;font-size:15px;color:#444;line-height:1.85;font-family:'Helvetica Neue',Arial,sans-serif;">Please find my resume enclosed below for your review.</p>
+  <p style="margin:16px 0 0;font-size:15px;color:#444;font-family:'Helvetica Neue',Arial,sans-serif;">Respectfully,</p>
+  <p style="margin:4px 0 0;font-size:16px;color:#111;font-weight:700;font-family:'Helvetica Neue',Arial,sans-serif;">Alex</p>
 </td></tr>
 
-<tr><td style="padding:0 40px;">
-  <table width="100%" cellpadding="0" cellspacing="0" style="background:#0d0d1a;border:1px solid rgba(255,255,255,0.1);border-radius:12px;overflow:hidden;">
+<tr><td style="padding:0 36px 36px;background:#ffffff;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#0a0a1a;border-radius:14px;overflow:hidden;">
 
-    <tr><td style="padding:36px 40px 0;text-align:center;border-bottom:1px solid rgba(255,255,255,0.06);padding-bottom:28px;">
-      <p style="margin:0;font-size:28px;font-weight:800;color:#ffffff;font-family:'Helvetica Neue',Arial,sans-serif;letter-spacing:3px;">ALEX</p>
-      <p style="margin:8px 0 0;font-size:12px;color:rgba(255,255,255,0.45);font-family:'Helvetica Neue',Arial,sans-serif;letter-spacing:2px;text-transform:uppercase;">Senior Business Development Associate</p>
+    <tr><td style="padding:40px 44px 0;text-align:center;border-bottom:1px solid rgba(255,255,255,0.08);padding-bottom:28px;">
+      <p style="margin:0;font-size:30px;font-weight:800;color:#ffffff;font-family:'Helvetica Neue',Arial,sans-serif;letter-spacing:4px;">ALEX</p>
+      <p style="margin:10px 0 0;font-size:12px;color:rgba(255,255,255,0.5);font-family:'Helvetica Neue',Arial,sans-serif;letter-spacing:2px;text-transform:uppercase;">Senior Business Development Associate</p>
     </td></tr>
 
-    <tr><td style="padding:28px 40px 0;">
-      <p style="margin:0 0 4px;font-size:10px;font-weight:700;color:rgba(255,255,255,0.35);font-family:'Helvetica Neue',Arial,sans-serif;text-transform:uppercase;letter-spacing:2px;">Professional Summary</p>
-      <hr style="border:none;border-top:1px solid rgba(255,255,255,0.08);margin:8px 0 12px;">
-      <p style="margin:0;font-size:14px;color:rgba(255,255,255,0.65);font-family:'Helvetica Neue',Arial,sans-serif;line-height:1.8;">Result-driven outbound expert specializing in high-velocity lead engagement and personalized communication. Built on a foundation of absolute reliability, unlimited operational capacity, and an unwavering commitment to quota attainment.</p>
+    <tr><td style="padding:28px 44px 0;">
+      <p style="margin:0 0 4px;font-size:10px;font-weight:700;color:rgba(255,255,255,0.4);font-family:'Helvetica Neue',Arial,sans-serif;text-transform:uppercase;letter-spacing:2px;">Professional Summary</p>
+      <hr style="border:none;border-top:1px solid rgba(255,255,255,0.1);margin:8px 0 12px;">
+      <p style="margin:0;font-size:14px;color:rgba(255,255,255,0.7);font-family:'Helvetica Neue',Arial,sans-serif;line-height:1.8;">Result-driven outbound expert specializing in high-velocity lead engagement and personalized communication. Built on a foundation of absolute reliability, unlimited operational capacity, and an unwavering commitment to quota attainment.</p>
     </td></tr>
 
-    <tr><td style="padding:28px 40px 0;">
-      <p style="margin:0 0 4px;font-size:10px;font-weight:700;color:rgba(255,255,255,0.35);font-family:'Helvetica Neue',Arial,sans-serif;text-transform:uppercase;letter-spacing:2px;">Work Experience</p>
-      <hr style="border:none;border-top:1px solid rgba(255,255,255,0.08);margin:8px 0 16px;">
+    <tr><td style="padding:28px 44px 0;">
+      <p style="margin:0 0 4px;font-size:10px;font-weight:700;color:rgba(255,255,255,0.4);font-family:'Helvetica Neue',Arial,sans-serif;text-transform:uppercase;letter-spacing:2px;">Work Experience</p>
+      <hr style="border:none;border-top:1px solid rgba(255,255,255,0.1);margin:8px 0 16px;">
 
       <table width="100%" cellpadding="0" cellspacing="0">
         <tr>
@@ -104,9 +99,9 @@ def _build_welcome_html(user_name, user_email):
       </table>
     </td></tr>
 
-    <tr><td style="padding:28px 40px 0;">
-      <p style="margin:0 0 4px;font-size:10px;font-weight:700;color:rgba(255,255,255,0.35);font-family:'Helvetica Neue',Arial,sans-serif;text-transform:uppercase;letter-spacing:2px;">Core Competencies</p>
-      <hr style="border:none;border-top:1px solid rgba(255,255,255,0.08);margin:8px 0 14px;">
+    <tr><td style="padding:28px 44px 0;">
+      <p style="margin:0 0 4px;font-size:10px;font-weight:700;color:rgba(255,255,255,0.4);font-family:'Helvetica Neue',Arial,sans-serif;text-transform:uppercase;letter-spacing:2px;">Core Competencies</p>
+      <hr style="border:none;border-top:1px solid rgba(255,255,255,0.1);margin:8px 0 14px;">
       <table width="100%" cellpadding="0" cellspacing="0" style="font-family:'Helvetica Neue',Arial,sans-serif;font-size:13px;color:rgba(255,255,255,0.6);">
         <tr>
           <td style="padding:5px 0;" width="50%">&#9656; Multi-Channel Prospecting</td>
@@ -122,20 +117,20 @@ def _build_welcome_html(user_name, user_email):
       </table>
     </td></tr>
 
-    <tr><td style="padding:28px 40px 32px;">
-      <p style="margin:0 0 4px;font-size:10px;font-weight:700;color:rgba(255,255,255,0.35);font-family:'Helvetica Neue',Arial,sans-serif;text-transform:uppercase;letter-spacing:2px;">Compensation &amp; Benefits</p>
-      <hr style="border:none;border-top:1px solid rgba(255,255,255,0.08);margin:8px 0 14px;">
+    <tr><td style="padding:28px 44px 36px;">
+      <p style="margin:0 0 4px;font-size:10px;font-weight:700;color:rgba(255,255,255,0.4);font-family:'Helvetica Neue',Arial,sans-serif;text-transform:uppercase;letter-spacing:2px;">Compensation &amp; Benefits</p>
+      <hr style="border:none;border-top:1px solid rgba(255,255,255,0.1);margin:8px 0 14px;">
       <table width="100%" cellpadding="0" cellspacing="0" style="font-family:'Helvetica Neue',Arial,sans-serif;font-size:13px;">
         <tr>
-          <td style="padding:5px 0;color:rgba(255,255,255,0.8);font-weight:600;" width="170">Salary</td>
+          <td style="padding:5px 0;color:rgba(255,255,255,0.85);font-weight:600;" width="170">Salary</td>
           <td style="padding:5px 0;color:rgba(255,255,255,0.55);">$99/month</td>
         </tr>
         <tr>
-          <td style="padding:5px 0;color:rgba(255,255,255,0.8);font-weight:600;">Benefits Required</td>
+          <td style="padding:5px 0;color:rgba(255,255,255,0.85);font-weight:600;">Benefits Required</td>
           <td style="padding:5px 0;color:rgba(255,255,255,0.55);">None</td>
         </tr>
         <tr>
-          <td style="padding:5px 0;color:rgba(255,255,255,0.8);font-weight:600;">Overhead Costs</td>
+          <td style="padding:5px 0;color:rgba(255,255,255,0.85);font-weight:600;">Overhead Costs</td>
           <td style="padding:5px 0;color:rgba(255,255,255,0.55);">None</td>
         </tr>
       </table>
@@ -144,21 +139,18 @@ def _build_welcome_html(user_name, user_email):
   </table>
 </td></tr>
 
-<tr><td style="padding:36px 52px 0;text-align:center;">
-  <p style="margin:0 0 24px;font-size:15px;color:rgba(255,255,255,0.65);line-height:1.8;font-family:'Helvetica Neue',Arial,sans-serif;">I am ready to begin my first shift immediately. Click below to review the full terms and finalize my placement on your team.</p>
+<tr><td style="padding:32px 52px 0;text-align:center;background:#ffffff;">
+  <p style="margin:0 0 24px;font-size:15px;color:#555;line-height:1.8;font-family:'Helvetica Neue',Arial,sans-serif;">I am ready to begin my first shift immediately. Click below to review the full terms and finalize my placement on your team.</p>
   <table cellpadding="0" cellspacing="0" style="margin:0 auto;">
-    <tr><td style="background:#ffffff;border-radius:10px;">
-      <a href="{BASE_URL}/login" style="display:inline-block;padding:16px 44px;color:#0a0a1a;text-decoration:none;font-size:14px;font-weight:700;font-family:'Helvetica Neue',Arial,sans-serif;letter-spacing:0.3px;">Review Full Contract &amp; Finalize Hire</a>
+    <tr><td style="background:#0a0a1a;border-radius:10px;">
+      <a href="{BASE_URL}/login" style="display:inline-block;padding:16px 44px;color:#ffffff;text-decoration:none;font-size:14px;font-weight:700;font-family:'Helvetica Neue',Arial,sans-serif;letter-spacing:0.3px;">Review Full Contract &amp; Finalize Hire</a>
     </td></tr>
   </table>
 </td></tr>
 
-<tr><td style="padding:40px 52px 36px;text-align:center;">
-  <hr style="border:none;border-top:1px solid rgba(255,255,255,0.06);margin:0 0 24px;">
-  <p style="margin:0;font-size:11px;color:rgba(255,255,255,0.3);font-family:'Helvetica Neue',Arial,sans-serif;letter-spacing:0.5px;">Open Humana &mdash; Providing the Silicon-Based Workforce of the Future</p>
-</td></tr>
-
-</table>
+<tr><td style="padding:32px 52px 36px;text-align:center;background:#ffffff;">
+  <hr style="border:none;border-top:1px solid #eee;margin:0 0 20px;">
+  <p style="margin:0;font-size:11px;color:#bbb;font-family:'Helvetica Neue',Arial,sans-serif;letter-spacing:0.5px;">Open Humana &mdash; Providing the Silicon-Based Workforce of the Future</p>
 </td></tr>
 
 </table>
