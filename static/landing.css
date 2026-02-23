@@ -329,6 +329,8 @@ a{text-decoration:none;color:inherit;transition:color .2s}
 .lead-icon-wrap{position:relative;width:64px;height:64px;margin-bottom:28px}
 .lead-brain{font-size:2.5rem;position:relative;z-index:2}
 .lead-icon-ring{position:absolute;inset:-6px;border:2px solid rgba(255,255,255,0.15);border-radius:50%}
+.lead-logo-wrap{margin-bottom:24px}
+.lead-logo-img{height:180px;width:auto;filter:invert(1);object-fit:contain}
 .lead-left h2{font-size:1.8rem;font-weight:800;color:#fff;letter-spacing:-.03em;line-height:1.2;margin-bottom:14px}
 .lead-left p{font-size:.92rem;color:rgba(255,255,255,0.6);line-height:1.7;margin-bottom:28px}
 .lead-features{display:flex;flex-direction:column;gap:12px}
