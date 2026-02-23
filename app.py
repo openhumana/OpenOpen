@@ -275,7 +275,7 @@ def api_lead():
 </td></tr>
 
 <tr><td style="background:#f8f9fa;padding:24px 40px;text-align:center;border-top:1px solid #e5e7eb;">
-  <p style="margin:0;font-size:12px;color:#9ca3af;">This lead was captured from your Open Human landing page.<br>&#169; 2026 Open Human &mdash; AI-Powered Sales Dialer</p>
+  <p style="margin:0;font-size:12px;color:#9ca3af;">This lead was captured from your Open Humana landing page.<br>&#169; 2026 Open Humana &mdash; Your Digital Employee Agency</p>
 </td></tr>
 
 </table>
