@@ -181,6 +181,23 @@ def landing():
     return render_template("landing.html")
 
 
+@app.route("/api/health")
+def api_health():
+    return jsonify({"status": "ok", "service": "Open Humana"}), 200
+
+
+@app.errorhandler(500)
+def handle_500(e):
+    logger.error(f"Internal server error: {e}")
+    if request.path.startswith("/api/"):
+        return jsonify({"error": "System Configuration in Progress", "details": "A required service is being configured. Please try again shortly."}), 500
+    return """<!DOCTYPE html><html><head><meta charset="utf-8"><title>Open Humana</title>
+    <style>body{font-family:'Helvetica Neue',Arial,sans-serif;background:#f0f0f3;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;}
+    .card{background:#fff;border-radius:16px;padding:48px;text-align:center;max-width:480px;box-shadow:0 4px 24px rgba(0,0,0,0.08);}
+    h1{font-size:24px;color:#111;margin:0 0 12px;}p{font-size:15px;color:#666;line-height:1.7;margin:0;}</style></head>
+    <body><div class="card"><h1>System Configuration in Progress</h1><p>Open Humana is being set up. This usually takes just a moment. Please refresh the page shortly.</p></div></body></html>""", 500
+
+
 @app.route("/about")
 def about_page():
     return render_template("about.html")
