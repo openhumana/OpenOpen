@@ -357,7 +357,8 @@ def login():
     if request.method == "POST":
         login_mode = request.form.get("login_mode", "user")
         if login_mode == "admin" and APP_PASSWORD:
-            app_password = request.form.get("app_password", "")
+            app_password = request.form.get("app_password", "").strip()
+            logger.info(f"Admin login attempt (password length: {len(app_password)}, expected length: {len(APP_PASSWORD)})")
             if app_password == APP_PASSWORD:
                 admin = User.query.filter_by(email="admin@openhuman.local").first()
                 if not admin:
@@ -366,11 +367,13 @@ def login():
                     db.session.add(admin)
                     db.session.commit()
                     logger.info("Admin account auto-created via APP_PASSWORD login")
-                login_user(admin)
+                login_user(admin, remember=True)
+                logger.info("Admin successfully authenticated")
                 if is_ajax:
                     return jsonify({"success": True, "redirect": url_for("dashboard")})
                 return redirect(url_for("dashboard"))
             else:
+                logger.warning(f"Admin login failed - password mismatch")
                 error = "Invalid admin password"
         else:
             email = request.form.get("email", "").strip().lower()
