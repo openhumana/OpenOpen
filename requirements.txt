@@ -10,3 +10,4 @@ flask-sqlalchemy
 oauthlib
 psycopg2-binary
 Pillow
+supabase
