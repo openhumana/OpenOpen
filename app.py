@@ -7,6 +7,7 @@ import os
 import csv
 import io
 import re
+import json
 import logging
 import threading
 import functools
@@ -184,6 +185,24 @@ def landing():
 @app.route("/api/health")
 def api_health():
     return jsonify({"status": "ok", "service": "Open Humana"}), 200
+
+
+@app.route("/api/chat", methods=["POST"])
+def api_chat():
+    from alex_chat import stream_chat_response
+    data = request.get_json() or {}
+    message = data.get("message", "").strip()
+    history = data.get("history", [])
+    if not message:
+        return jsonify({"error": "Message is required"}), 400
+
+    def generate():
+        for chunk in stream_chat_response(message, history):
+            yield f"data: {json.dumps({'text': chunk})}\n\n"
+        yield "data: [DONE]\n\n"
+
+    return app.response_class(generate(), mimetype="text/event-stream",
+                              headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
 @app.errorhandler(500)

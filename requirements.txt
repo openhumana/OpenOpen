@@ -11,3 +11,4 @@ oauthlib
 psycopg2-binary
 Pillow
 supabase
+google-generativeai

@@ -10,6 +10,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/landing.css">
+  <link rel="stylesheet" href="/static/chat-widget.css">
 </head>
 <body>
 
@@ -1082,6 +1083,173 @@
         btn.disabled = false;
       }
     });
+  </script>
+
+  <div class="alex-chat-bubble" id="alexChatBubble" title="Chat with Alex">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+    <div class="alex-badge"></div>
+  </div>
+
+  <div class="alex-chat-window" id="alexChatWindow">
+    <div class="alex-chat-header">
+      <div class="alex-chat-avatar">A</div>
+      <div class="alex-chat-header-info">
+        <div class="alex-chat-header-name">Alex</div>
+        <div class="alex-chat-header-status">Available now</div>
+      </div>
+      <button class="alex-chat-close" id="alexChatClose">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+      </button>
+    </div>
+    <div class="alex-chat-messages" id="alexChatMessages"></div>
+    <div class="alex-chat-input-area">
+      <input type="text" class="alex-chat-input" id="alexChatInput" placeholder="Type a message..." autocomplete="off">
+      <button class="alex-chat-send" id="alexChatSend">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+      </button>
+    </div>
+  </div>
+
+  <script>
+  (function(){
+    var bubble = document.getElementById('alexChatBubble');
+    var win = document.getElementById('alexChatWindow');
+    var closeBtn = document.getElementById('alexChatClose');
+    var messages = document.getElementById('alexChatMessages');
+    var input = document.getElementById('alexChatInput');
+    var sendBtn = document.getElementById('alexChatSend');
+    var history = [];
+    var isOpen = false;
+    var initialized = false;
+    var sending = false;
+
+    function addMessage(text, role) {
+      var div = document.createElement('div');
+      div.className = 'alex-msg ' + (role === 'user' ? 'user' : 'bot');
+      div.textContent = text;
+      messages.appendChild(div);
+      messages.scrollTop = messages.scrollHeight;
+      return div;
+    }
+
+    function showTyping() {
+      var div = document.createElement('div');
+      div.className = 'alex-msg bot';
+      div.id = 'alexTyping';
+      div.innerHTML = '<div class="typing-indicator"><span></span><span></span><span></span></div>';
+      messages.appendChild(div);
+      messages.scrollTop = messages.scrollHeight;
+      return div;
+    }
+
+    function removeTyping() {
+      var el = document.getElementById('alexTyping');
+      if (el) el.remove();
+    }
+
+    function openChat() {
+      win.classList.add('open');
+      isOpen = true;
+      if (!initialized) {
+        initialized = true;
+        addMessage("Hi, I'm Alex. I saw your job posting for a Sales Specialist and I've already prepared my first 500 leads. Should we discuss my starting date?", 'bot');
+        history.push({role: 'model', text: "Hi, I'm Alex. I saw your job posting for a Sales Specialist and I've already prepared my first 500 leads. Should we discuss my starting date?"});
+      }
+      setTimeout(function(){ input.focus(); }, 100);
+    }
+
+    function closeChat() {
+      win.classList.remove('open');
+      isOpen = false;
+    }
+
+    bubble.addEventListener('click', function() {
+      if (isOpen) closeChat(); else openChat();
+    });
+    closeBtn.addEventListener('click', closeChat);
+
+    async function sendMessage() {
+      var text = input.value.trim();
+      if (!text || sending) return;
+      sending = true;
+      sendBtn.disabled = true;
+      input.value = '';
+
+      addMessage(text, 'user');
+      history.push({role: 'user', text: text});
+
+      var typingEl = showTyping();
+
+      try {
+        var res = await fetch('/api/chat', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({message: text, history: history.slice(0, -1)})
+        });
+
+        removeTyping();
+
+        if (!res.ok) {
+          addMessage("Sorry, I'm having a moment. Could you try again?", 'bot');
+          sending = false;
+          sendBtn.disabled = false;
+          return;
+        }
+
+        var botDiv = document.createElement('div');
+        botDiv.className = 'alex-msg bot';
+        messages.appendChild(botDiv);
+
+        var reader = res.body.getReader();
+        var decoder = new TextDecoder();
+        var fullResponse = '';
+        var buffer = '';
+
+        while (true) {
+          var result = await reader.read();
+          if (result.done) break;
+          buffer += decoder.decode(result.value, {stream: true});
+
+          var lines = buffer.split('\n');
+          buffer = lines.pop();
+
+          for (var i = 0; i < lines.length; i++) {
+            var line = lines[i].trim();
+            if (!line.startsWith('data: ')) continue;
+            var payload = line.substring(6);
+            if (payload === '[DONE]') continue;
+            try {
+              var parsed = JSON.parse(payload);
+              if (parsed.text) {
+                fullResponse += parsed.text;
+                botDiv.textContent = fullResponse;
+                messages.scrollTop = messages.scrollHeight;
+              }
+            } catch(e) {}
+          }
+        }
+
+        if (fullResponse) {
+          history.push({role: 'model', text: fullResponse});
+        }
+      } catch(err) {
+        removeTyping();
+        addMessage("Connection hiccup — could you try that again?", 'bot');
+      }
+
+      sending = false;
+      sendBtn.disabled = false;
+      input.focus();
+    }
+
+    sendBtn.addEventListener('click', sendMessage);
+    input.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        sendMessage();
+      }
+    });
+  })();
   </script>
 </body>
 </html>
