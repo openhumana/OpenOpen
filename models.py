@@ -19,6 +19,7 @@ class User(UserMixin, db.Model):
     email = db.Column(db.String(255), unique=True, nullable=False)
     password_hash = db.Column(db.String(255), nullable=True)
     google_id = db.Column(db.String(255), nullable=True, unique=True)
+    supabase_id = db.Column(db.String(255), nullable=True, unique=True)
     profile_name = db.Column(db.String(100), nullable=True)
     profile_image_url = db.Column(db.String(500), nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)

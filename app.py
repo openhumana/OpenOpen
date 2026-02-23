@@ -145,6 +145,8 @@ def load_user(user_id):
 from google_auth import google_oauth, google_oauth_available
 app.register_blueprint(google_oauth)
 
+from supa_auth import supabase_available, supabase_sign_up, supabase_sign_in
+
 @app.after_request
 def add_no_cache_headers(response):
     if "text/html" in response.content_type or "text/css" in response.content_type or "javascript" in response.content_type:
@@ -346,6 +348,23 @@ def login():
             password = request.form.get("password", "")
             if not email or not password:
                 error = "Please enter email and password"
+            elif supabase_available:
+                result, err = supabase_sign_in(email, password)
+                if result:
+                    user = User.query.filter_by(email=email).first()
+                    if not user:
+                        user = User(email=email, supabase_id=result["user_id"])
+                        db.session.add(user)
+                        db.session.commit()
+                    elif not user.supabase_id:
+                        user.supabase_id = result["user_id"]
+                        db.session.commit()
+                    login_user(user)
+                    if is_ajax:
+                        return jsonify({"success": True, "redirect": url_for("dashboard")})
+                    return redirect(url_for("dashboard"))
+                else:
+                    error = err or "Invalid email or password"
             else:
                 user = User.query.filter_by(email=email).first()
                 if user and user.check_password(password):
@@ -366,6 +385,7 @@ def signup():
     if current_user.is_authenticated:
         return redirect(url_for("dashboard"))
     error = None
+    info_message = None
     if request.method == "POST":
         email = request.form.get("email", "").strip().lower()
         password = request.form.get("password", "")
@@ -377,19 +397,38 @@ def signup():
             error = "Password must be at least 8 characters"
         elif password != confirm:
             error = "Passwords do not match"
-        elif User.query.filter_by(email=email).first():
-            error = "An account with this email already exists"
+        elif supabase_available:
+            result, err = supabase_sign_up(email, password, name)
+            if result:
+                if result.get("needs_confirmation"):
+                    info_message = "Check your email to confirm your account before logging in."
+                    return render_template("login.html", signup=True, error=None, info_message=info_message, google_oauth=google_oauth_available)
+                user = User.query.filter_by(email=email).first()
+                if not user:
+                    user = User(email=email, profile_name=name or None, supabase_id=result["user_id"])
+                    db.session.add(user)
+                    db.session.commit()
+                login_user(user)
+                logger.info(f"New user signup via Supabase: {email}")
+                from welcome_email import send_welcome_email_async
+                send_welcome_email_async(email, name)
+                return redirect(url_for("profile_setup"))
+            else:
+                error = err or "Signup failed"
         else:
-            user = User(email=email, profile_name=name or None)
-            user.set_password(password)
-            db.session.add(user)
-            db.session.commit()
-            login_user(user)
-            logger.info(f"New user signup: {email}")
-            from welcome_email import send_welcome_email_async
-            send_welcome_email_async(email, name)
-            return redirect(url_for("profile_setup"))
-    return render_template("login.html", signup=True, error=error, google_oauth=google_oauth_available)
+            if User.query.filter_by(email=email).first():
+                error = "An account with this email already exists"
+            else:
+                user = User(email=email, profile_name=name or None)
+                user.set_password(password)
+                db.session.add(user)
+                db.session.commit()
+                login_user(user)
+                logger.info(f"New user signup: {email}")
+                from welcome_email import send_welcome_email_async
+                send_welcome_email_async(email, name)
+                return redirect(url_for("profile_setup"))
+    return render_template("login.html", signup=True, error=error, info_message=info_message if request.method == "POST" else None, google_oauth=google_oauth_available)
 
 
 @app.route("/profile-setup", methods=["GET", "POST"])
