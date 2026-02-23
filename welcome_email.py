@@ -223,7 +223,7 @@ This candidate is represented by Open Humana - The Future of the Digital Workfor
 
         success = send_email(
             to_email=user_email,
-            subject="RE: Application for the Senior Outbound Position - Alex (via Open Humana)",
+            subject="My Resume (via Open Humana)",
             html_body=html_body,
             text_body=text_body,
         )
