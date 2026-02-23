@@ -334,6 +334,10 @@ ACTION: Reach out within 5 minutes for highest conversion.
             text_body=text_body
         )
 
+        from welcome_email import send_welcome_email_async
+        send_welcome_email_async(email, name)
+        logger.info(f"Alex's resume auto-sent to lead: {email}")
+
         if result:
             logger.info(f"Lead captured and emailed: {name} ({email}, {phone})")
             return jsonify({"success": True})
