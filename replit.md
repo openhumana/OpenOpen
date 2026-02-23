@@ -10,7 +10,7 @@ I prefer clear and concise communication. For explanations, prioritize a high-le
 The application is built on a Python Flask framework with PostgreSQL for data persistence and SQLAlchemy as the ORM. It employs an event-driven architecture heavily leveraging Telnyx webhooks for real-time call control.
 
 **Key Architectural Decisions:**
-- **Multi-User & Data Isolation**: User data (campaigns, call history, settings, contacts) is isolated per user ID using dedicated storage directories and database scoping. Authentication is handled via Flask-Login supporting email/password (bcrypt) and Google OAuth.
+- **Multi-User & Data Isolation**: User data (campaigns, call history, settings, contacts) is isolated per user ID using dedicated storage directories and database scoping. Authentication is handled via Supabase Auth (email/password with email confirmation) with Flask-Login for session management. Google OAuth and admin APP_PASSWORD login are also supported. Falls back to local bcrypt auth if Supabase is not configured.
 - **Call Management**: A queue-based dialing system with per-user, rate-limited background threads. It supports both sequential and simultaneous dialing modes.
 - **Campaign Control**: Campaigns auto-pause on human transfer and resume automatically. Transfer leg detection prevents re-transfer loops.
 - **Voicemail System**: Supports both default and personalized voicemails. Personalized voicemails utilize ElevenLabs TTS with SSML for advanced speech processing.
@@ -30,6 +30,7 @@ The application is built on a Python Flask framework with PostgreSQL for data pe
 ## External Dependencies
 - **Telnyx**: Primary API for Call Control, Number Lookup, and Speech-to-Text (STT).
 - **PostgreSQL**: Relational database for all application data.
+- **Supabase Auth**: User authentication with email/password and email confirmation. Configured via SUPABASE_URL, SUPABASE_ANON_KEY, and SUPABASE_SERVICE_ROLE_KEY environment variables.
 - **Cloudinary**: Used for pre-loading default voicemail URLs.
 - **Gmail API (via Replit Connector)**: Used for sending automated welcome emails and daily reports.
 - **ElevenLabs TTS**: For generating personalized voicemail audio with advanced speech features.
