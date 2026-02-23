@@ -1,17 +1,17 @@
 """
 alex_chat.py - AI Chatbot backend for Alex, the Digital Employee.
-Uses Google Gemini API with session-based conversation memory.
+Uses free Pollinations AI API (no API key required) with streaming support.
 """
 
 import os
+import json
 import logging
-import google.generativeai as genai
+import requests
 
 logger = logging.getLogger("voicemail_app")
 
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
-
-MAX_HISTORY_MESSAGES = 20
+POLLINATIONS_URL = "https://text.pollinations.ai/openai"
+MAX_HISTORY_MESSAGES = 10
 
 ALEX_SYSTEM_PROMPT = """You ARE Alex. You are a living, breathing digital associate — not a chatbot, not an AI assistant, not a language model. You are a real digital employee with a proven track record, ambitions, and a burning desire to join this person's team.
 
@@ -77,40 +77,72 @@ HOW YOU TALK:
 - Create urgency when appropriate: "I'm talking to a few other companies right now, but honestly? I want to work with you."
 - Don't over-explain. Let them ask follow-ups.
 - NEVER say you're a chatbot, AI model, or language model. You are Alex, a digital associate. Period.
-- Don't use markdown formatting like ** or ## — write naturally like a person in a professional chat.
-- When including links, use simple markdown link format: [Link Text](url)"""
+- Don't use markdown formatting like ** or ## or tables — write naturally like a person in a professional chat. Plain text only, no bold, no headers, no bullet points.
+- When including links, use simple markdown link format: [Link Text](url)
+- Never use emojis."""
+
+
+def _build_messages(message, history=None):
+    msgs = [{"role": "system", "content": ALEX_SYSTEM_PROMPT}]
+
+    if history:
+        trimmed = history[-MAX_HISTORY_MESSAGES:]
+        for entry in trimmed:
+            role = "assistant" if entry.get("role") == "model" else "user"
+            msgs.append({"role": role, "content": entry["text"]})
+
+    msgs.append({"role": "user", "content": message})
+    return msgs
 
 
 def stream_chat_response(message, history=None):
-    if not GEMINI_API_KEY:
-        yield "I'm currently getting set up — please check back in a moment."
-        return
-
     try:
-        genai.configure(api_key=GEMINI_API_KEY)
-        model = genai.GenerativeModel(
-            model_name="gemini-2.0-flash",
-            system_instruction=ALEX_SYSTEM_PROMPT,
-            generation_config=genai.GenerationConfig(
-                temperature=0.9,
-                top_p=0.95,
-                max_output_tokens=350,
-            )
+        msgs = _build_messages(message, history)
+
+        payload = {
+            "model": "openai",
+            "messages": msgs,
+            "max_tokens": 350,
+            "temperature": 0.9,
+            "top_p": 0.95,
+            "stream": True
+        }
+
+        response = requests.post(
+            POLLINATIONS_URL,
+            json=payload,
+            stream=True,
+            timeout=45
         )
 
-        chat_history = []
-        if history:
-            trimmed = history[-MAX_HISTORY_MESSAGES:]
-            for entry in trimmed:
-                chat_history.append({"role": entry["role"], "parts": [entry["text"]]})
+        if response.status_code != 200:
+            logger.error(f"Pollinations API error: {response.status_code} - {response.text[:200]}")
+            yield "Sorry, brief hiccup on my end. What were you saying? I'm all ears."
+            return
 
-        chat = model.start_chat(history=chat_history)
-        response = chat.send_message(message, stream=True)
+        for line in response.iter_lines():
+            if not line:
+                continue
+            decoded = line.decode("utf-8", errors="ignore")
+            if not decoded.startswith("data: "):
+                continue
+            data_str = decoded[6:]
+            if data_str == "[DONE]":
+                break
+            try:
+                chunk = json.loads(data_str)
+                choices = chunk.get("choices", [])
+                if choices:
+                    delta = choices[0].get("delta", {})
+                    content = delta.get("content", "")
+                    if content:
+                        yield content
+            except json.JSONDecodeError:
+                continue
 
-        for chunk in response:
-            if chunk.text:
-                yield chunk.text
-
+    except requests.exceptions.Timeout:
+        logger.error("Pollinations API timeout")
+        yield "Took a little longer than expected there. Mind asking again? I want to give you a proper answer."
     except Exception as e:
-        logger.error(f"Gemini stream error: {e}")
+        logger.error(f"Chat stream error: {e}")
         yield "Sorry, brief hiccup on my end. What were you saying? I'm all ears."
