@@ -7,8 +7,10 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_login import UserMixin
 import bcrypt
 from datetime import datetime
+import logging
 
 db = SQLAlchemy()
+logger = logging.getLogger("voicemail_app")
 
 
 class User(UserMixin, db.Model):
@@ -118,3 +120,39 @@ def init_db(app):
     db.init_app(app)
     with app.app_context():
         db.create_all()
+        _ensure_schema()
+
+
+def _ensure_schema():
+    """
+    Lightweight, idempotent schema fixups for deployments without migrations.
+    Railway Postgres will NOT auto-add columns when models change; create_all()
+    only creates missing tables. This ensures critical columns exist.
+    """
+    try:
+        from sqlalchemy import inspect, text
+
+        inspector = inspect(db.engine)
+        if "users" not in inspector.get_table_names():
+            return
+
+        existing_cols = {col["name"] for col in inspector.get_columns("users")}
+
+        # Fix: older DBs may not have supabase_id yet (causes 500s on any User query)
+        if "supabase_id" not in existing_cols:
+            logger.warning("DB schema missing users.supabase_id; applying ALTER TABLE")
+            print("DB schema missing users.supabase_id; applying ALTER TABLE")
+            db.session.execute(text("ALTER TABLE users ADD COLUMN supabase_id VARCHAR(255)"))
+            db.session.commit()
+
+        # Ensure a unique index exists (multiple NULLs allowed in Postgres)
+        # IF NOT EXISTS keeps this safe across restarts.
+        db.session.execute(
+            text("CREATE UNIQUE INDEX IF NOT EXISTS ix_users_supabase_id_unique ON users (supabase_id)")
+        )
+        db.session.commit()
+
+    except Exception as e:
+        # Don't crash the app on migration errors; log for Railway.
+        logger.exception(f"Schema ensure failed: {e}")
+        print(f"Schema ensure failed: {e}")
