@@ -1,6 +1,6 @@
 """
 models.py - Database models for Flask application with Flask-SQLAlchemy and Flask-Login.
-Defines User and UserAppData models for PostgreSQL database.
+Defines User, UserAppData, UserInstance, and ProvisionedNumber models for PostgreSQL database.
 """
 
 from flask_sqlalchemy import SQLAlchemy
@@ -25,8 +25,9 @@ class User(UserMixin, db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
     
-    # Relationship to UserAppData
     app_data = db.relationship('UserAppData', backref='user', lazy=True, cascade='all, delete-orphan')
+    instance = db.relationship('UserInstance', backref='user', uselist=False, lazy=True, cascade='all, delete-orphan')
+    provisioned_numbers = db.relationship('ProvisionedNumber', backref='user', lazy=True, cascade='all, delete-orphan')
     
     @property
     def is_active(self):
@@ -67,10 +68,49 @@ class UserAppData(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
     
-    # Unique constraint on (user_id, data_key)
     __table_args__ = (
         db.UniqueConstraint('user_id', 'data_key', name='uq_user_data_key'),
     )
+
+
+class UserInstance(db.Model):
+    """Per-user Alex instance. Created on signup to isolate each user's data."""
+    __tablename__ = 'user_instances'
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), unique=True, nullable=False)
+    status = db.Column(db.String(50), default='active', nullable=False)
+    telnyx_connection_id = db.Column(db.String(255), nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+
+class ProvisionedNumber(db.Model):
+    """Phone numbers provisioned via Telnyx and assigned to a specific user."""
+    __tablename__ = 'provisioned_numbers'
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    phone_number = db.Column(db.String(30), nullable=False)
+    telnyx_number_id = db.Column(db.String(255), nullable=True)
+    telnyx_order_id = db.Column(db.String(255), nullable=True)
+    telnyx_connection_id = db.Column(db.String(255), nullable=True)
+    status = db.Column(db.String(50), default='provisioning', nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    __table_args__ = (
+        db.UniqueConstraint('phone_number', name='uq_provisioned_phone'),
+    )
+
+
+def ensure_user_instance(user_id):
+    """Create a UserInstance for the user if one doesn't exist yet."""
+    instance = UserInstance.query.filter_by(user_id=user_id).first()
+    if not instance:
+        instance = UserInstance(user_id=user_id, status='active')
+        db.session.add(instance)
+        db.session.commit()
+    return instance
 
 
 def init_db(app):
