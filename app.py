@@ -408,59 +408,65 @@ def login():
     error = None
     is_ajax = request.headers.get("X-Requested-With") == "XMLHttpRequest"
     if request.method == "POST":
-        login_mode = request.form.get("login_mode", "user")
-        if login_mode == "admin" and APP_PASSWORD:
-            app_password = request.form.get("app_password", "").strip()
-            logger.info(f"Admin login attempt (password length: {len(app_password)}, expected length: {len(APP_PASSWORD)})")
-            if app_password == APP_PASSWORD:
-                admin = User.query.filter_by(email="admin@openhuman.local").first()
-                if not admin:
-                    admin = User(email="admin@openhuman.local", profile_name="Admin")
-                    admin.set_password(APP_PASSWORD)
-                    db.session.add(admin)
-                    db.session.commit()
-                    logger.info("Admin account auto-created via APP_PASSWORD login")
-                login_user(admin, remember=True)
-                logger.info("Admin successfully authenticated")
-                if is_ajax:
-                    return jsonify({"success": True, "redirect": url_for("dashboard")})
-                return redirect(url_for("dashboard"))
+        try:
+            login_mode = request.form.get("login_mode", "user")
+            if login_mode == "admin" and APP_PASSWORD:
+                app_password = request.form.get("app_password", "").strip()
+                logger.info(f"Admin login attempt (password length: {len(app_password)}, expected length: {len(APP_PASSWORD)})")
+                if app_password == APP_PASSWORD:
+                    admin = User.query.filter_by(email="admin@openhuman.local").first()
+                    if not admin:
+                        admin = User(email="admin@openhuman.local", profile_name="Admin")
+                        admin.set_password(APP_PASSWORD)
+                        db.session.add(admin)
+                        db.session.commit()
+                        logger.info("Admin account auto-created via APP_PASSWORD login")
+                    login_user(admin, remember=True)
+                    logger.info("Admin successfully authenticated")
+                    if is_ajax:
+                        return jsonify({"success": True, "redirect": url_for("dashboard")})
+                    return redirect(url_for("dashboard"))
+                else:
+                    logger.warning(f"Admin login failed - password mismatch")
+                    error = "Invalid admin password"
             else:
-                logger.warning(f"Admin login failed - password mismatch")
-                error = "Invalid admin password"
-        else:
-            email = request.form.get("email", "").strip().lower()
-            password = request.form.get("password", "")
-            if not email or not password:
-                error = "Please enter email and password"
-            elif supabase_available:
-                result, err = supabase_sign_in(email, password)
-                if result:
+                email = request.form.get("email", "").strip().lower()
+                password = request.form.get("password", "")
+                if not email or not password:
+                    error = "Please enter email and password"
+                elif supabase_available:
+                    result, err = supabase_sign_in(email, password)
+                    if result:
+                        user = User.query.filter_by(email=email).first()
+                        if not user:
+                            user = User(email=email, supabase_id=result["user_id"])
+                            db.session.add(user)
+                            db.session.commit()
+                        elif not user.supabase_id:
+                            user.supabase_id = result["user_id"]
+                            db.session.commit()
+                        login_user(user)
+                        if is_ajax:
+                            return jsonify({"success": True, "redirect": url_for("dashboard")})
+                        return redirect(url_for("dashboard"))
+                    else:
+                        error = err or "Invalid email or password"
+                else:
                     user = User.query.filter_by(email=email).first()
-                    if not user:
-                        user = User(email=email, supabase_id=result["user_id"])
-                        db.session.add(user)
-                        db.session.commit()
-                    elif not user.supabase_id:
-                        user.supabase_id = result["user_id"]
-                        db.session.commit()
-                    login_user(user)
-                    if is_ajax:
-                        return jsonify({"success": True, "redirect": url_for("dashboard")})
-                    return redirect(url_for("dashboard"))
-                else:
-                    error = err or "Invalid email or password"
-            else:
-                user = User.query.filter_by(email=email).first()
-                if user and user.check_password(password):
-                    login_user(user)
-                    if is_ajax:
-                        return jsonify({"success": True, "redirect": url_for("dashboard")})
-                    return redirect(url_for("dashboard"))
-                else:
-                    error = "Invalid email or password"
-        if is_ajax and error:
-            return jsonify({"success": False, "error": error}), 401
+                    if user and user.check_password(password):
+                        login_user(user)
+                        if is_ajax:
+                            return jsonify({"success": True, "redirect": url_for("dashboard")})
+                        return redirect(url_for("dashboard"))
+                    else:
+                        error = "Invalid email or password"
+            if is_ajax and error:
+                return jsonify({"success": False, "error": error}), 401
+        except Exception as e:
+            logger.exception(f"Login POST handler crashed: {e}")
+            if is_ajax:
+                return jsonify({"success": False, "error": "Server error, please try again."}), 500
+            error = "Something went wrong while logging you in. Please try again."
     return render_template("login.html", error=error, google_oauth=google_oauth_available, app_password_set=bool(APP_PASSWORD))
 
 
