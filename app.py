@@ -365,7 +365,6 @@ ACTION: Reach out within 5 minutes for highest conversion.
 
         from gmail_client import send_email
         import threading
-        resume_url = request.host_url.rstrip("/") + "/alex-resume"
 
         def _send_admin_lead_email():
             try:
@@ -382,53 +381,15 @@ ACTION: Reach out within 5 minutes for highest conversion.
             except Exception as e:
                 logger.exception(f"Background admin email send failed for {email}: {e}")
 
-        def _send_user_welcome_resume_email():
-            try:
-                user_html = f"""
-<!DOCTYPE html>
-<html>
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
-<body style="margin:0;padding:0;background:#f4f4f7;font-family:'Helvetica Neue',Arial,sans-serif;">
-  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f7;padding:32px 20px;">
-    <tr><td align="center">
-      <table width="640" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:12px;overflow:hidden;border:1px solid #e8e8ed;">
-        <tr><td style="padding:28px 32px;">
-          <p style="margin:0 0 12px;font-size:16px;color:#111;line-height:1.6;">Hi {name.split()[0] if name else 'there'},</p>
-          <p style="margin:0 0 14px;font-size:14px;color:#333;line-height:1.7;">Here is Alex's Resume.</p>
-          <p style="margin:0 0 18px;font-size:14px;color:#333;line-height:1.7;">
-            View it here: <a href="{resume_url}" style="color:#4338ca;text-decoration:none;font-weight:600;">{resume_url}</a>
-          </p>
-          <p style="margin:0;font-size:13px;color:#666;line-height:1.7;">If you have any questions, just reply to this email.</p>
-        </td></tr>
-      </table>
-    </td></tr>
-  </table>
-</body>
-</html>
-"""
-
-                user_text = (
-                    f"Hi {name_raw.split()[0] if name_raw else 'there'},\n\n"
-                    "Here is Alex's Resume.\n"
-                    f"View it here: {resume_url}\n\n"
-                    "If you have any questions, just reply to this email.\n"
-                )
-
-                result = send_email(
-                    to_email=email_raw,
-                    subject="Alex from OpenHumana - Resume Attached",
-                    html_body=user_html,
-                    text_body=user_text,
-                )
-                if result:
-                    logger.info(f"Welcome & resume email sent to lead: {email_raw}")
-                else:
-                    logger.error(f"Lead captured but welcome/resume email failed: {email_raw}")
-            except Exception as e:
-                logger.exception(f"Background welcome/resume email send failed for {email_raw}: {e}")
-
         threading.Thread(target=_send_admin_lead_email, daemon=True).start()
-        threading.Thread(target=_send_user_welcome_resume_email, daemon=True).start()
+
+        # Use the existing configured welcome email, which sends Alex's resume.
+        from welcome_email import send_welcome_email_async
+        try:
+            send_welcome_email_async(email_raw, name_raw)
+            logger.info(f"Alex's resume auto-sent to lead via welcome email: {email_raw}")
+        except Exception as e:
+            logger.exception(f"Failed to enqueue welcome email for lead {email_raw}: {e}")
 
         # Always return success to the client quickly; email sends happen in background
         return jsonify({"success": True})
@@ -436,18 +397,6 @@ ACTION: Reach out within 5 minutes for highest conversion.
     except Exception as e:
         logger.error(f"Lead capture error: {e}")
         return jsonify({"success": False, "error": "Server error"}), 500
-
-
-@app.route("/alex-resume", methods=["GET"])
-def alex_resume_page():
-    """Public resume link used in the welcome email."""
-    try:
-        from welcome_email import _build_welcome_html
-        html_body = _build_welcome_html(user_name="Hiring Manager", user_email="")
-        return html_body
-    except Exception as e:
-        logger.exception(f"Failed to render alex-resume page: {e}")
-        return "Resume temporarily unavailable.", 503
 
 
 # ---- Login Route ----
