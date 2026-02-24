@@ -383,11 +383,11 @@ ACTION: Reach out within 5 minutes for highest conversion.
 
         threading.Thread(target=_send_admin_lead_email, daemon=True).start()
 
-        # Use the existing configured welcome email, which sends Alex's resume.
+        # Use the existing configured welcome email (professional resume-style template)
         from welcome_email import send_welcome_email_async
         try:
             send_welcome_email_async(email_raw, name_raw)
-            logger.info(f"Alex's resume auto-sent to lead via welcome email: {email_raw}")
+            logger.info(f"Welcome resume email auto-sent to lead: {email_raw}")
         except Exception as e:
             logger.exception(f"Failed to enqueue welcome email for lead {email_raw}: {e}")
 
