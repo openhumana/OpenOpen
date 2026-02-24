@@ -43,7 +43,7 @@ def _get_access_token():
     url = f"https://{hostname}/api/v2/connection?include_secrets=true&connector_names=google-mail"
     resp = requests.get(url, headers={
         "Accept": "application/json",
-        "X_REPLIT_TOKEN": x_replit_token,
+        "X-Replit-Token": x_replit_token,
     })
     resp.raise_for_status()
     data = resp.json()
