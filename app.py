@@ -365,7 +365,7 @@ ACTION: Reach out within 5 minutes for highest conversion.
 
         from gmail_client import send_email
         result = send_email(
-            to_email="edsindutires1@gmail.com",
+            to_email=os.environ.get("ADMIN_EMAIL", "openhumana@gmail.com"),
             subject="1 Hot Lead Received Just Now",
             html_body=html_body,
             text_body=text_body
