@@ -132,7 +132,7 @@ app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get("DATABASE_URL", "sqlite:/
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {"pool_pre_ping": True, "pool_recycle": 300}
 
-from models import db, User, init_db
+from models import db, User, UserInstance, ProvisionedNumber, ensure_user_instance, init_db
 init_db(app)
 
 login_manager = LoginManager()
@@ -488,6 +488,7 @@ def signup():
                 db.session.add(user)
                 db.session.commit()
                 login_user(user)
+                ensure_user_instance(user.id)
                 logger.info(f"New user signup: {email}")
                 from welcome_email import send_welcome_email_async
                 send_welcome_email_async(email, name)
@@ -538,6 +539,7 @@ def verify_otp_page():
                         user.set_password(password)
                     db.session.commit()
                 login_user(user)
+                ensure_user_instance(user.id)
                 logger.info(f"New user signup via Supabase OTP: {email}")
                 from welcome_email import send_welcome_email_async
                 send_welcome_email_async(email, name)
@@ -2223,6 +2225,146 @@ def _get_current_webhook_url():
     if base:
         return base + "/webhook"
     return "https://example.com/webhook"
+
+
+# ---- Automated Line Provisioning ----
+@app.route("/api/provision-line", methods=["POST"])
+@login_required
+def api_provision_line():
+    """Automated Telnyx number provisioning: search, purchase, assign to user."""
+    user_id = current_user.id
+    existing = ProvisionedNumber.query.filter_by(user_id=user_id, status='active').first()
+    if existing:
+        return jsonify({"success": True, "status": "ready", "phone_number": existing.phone_number,
+                         "message": "Alex already has a local line assigned."})
+
+    pending = ProvisionedNumber.query.filter_by(user_id=user_id, status='provisioning').first()
+    if pending:
+        return jsonify({"success": True, "status": "provisioning",
+                         "message": "A line is currently being provisioned. Please wait..."})
+
+    try:
+        search_result = search_available_numbers(country_code="US", number_type="local", limit=5)
+        if not search_result.get("success") or not search_result.get("numbers"):
+            return jsonify({"success": False, "error": "No local numbers available. Please try again later."}), 400
+
+        chosen = search_result["numbers"][0]
+        phone_number = chosen["phone_number"]
+
+        pn = ProvisionedNumber(user_id=user_id, phone_number=phone_number, status='provisioning')
+        db.session.add(pn)
+        db.session.commit()
+
+        webhook_url = _get_current_webhook_url()
+        app_name = f"Alex-{user_id}"
+        existing_apps = list_call_control_apps()
+        connection_id = None
+        if existing_apps.get("success"):
+            for a in existing_apps.get("apps", []):
+                if a.get("app_name") == app_name:
+                    connection_id = a.get("id")
+                    break
+        if not connection_id:
+            app_result = create_call_control_app(app_name, webhook_url)
+            if not app_result.get("success"):
+                pn.status = 'failed'
+                db.session.commit()
+                return jsonify({"success": False, "error": "Failed to create call control app."}), 500
+            connection_id = app_result["app_id"]
+
+        purchase_result = purchase_number(phone_number, connection_id=connection_id)
+        if not purchase_result.get("success"):
+            pn.status = 'failed'
+            db.session.commit()
+            return jsonify({"success": False, "error": purchase_result.get("error", "Failed to purchase number.")}), 500
+
+        pn.telnyx_order_id = purchase_result.get("order_id")
+        pn.telnyx_connection_id = connection_id
+        pn.status = 'active'
+        db.session.commit()
+
+        instance = ensure_user_instance(user_id)
+        instance.telnyx_connection_id = connection_id
+        db.session.commit()
+
+        logger.info(f"Line provisioned for user {user_id}: {phone_number}")
+        return jsonify({"success": True, "status": "ready", "phone_number": phone_number,
+                         "message": "Alex is Ready."})
+
+    except Exception as e:
+        logger.error(f"Provisioning error for user {user_id}: {e}")
+        db.session.rollback()
+        return jsonify({"success": False, "error": "An unexpected error occurred during provisioning."}), 500
+
+
+@app.route("/api/provision-status", methods=["GET"])
+@login_required
+def api_provision_status():
+    """Check the current provisioning status for the logged-in user."""
+    pn = ProvisionedNumber.query.filter_by(user_id=current_user.id).order_by(ProvisionedNumber.created_at.desc()).first()
+    if not pn:
+        return jsonify({"provisioned": False, "status": "none"})
+    return jsonify({
+        "provisioned": pn.status == 'active',
+        "status": pn.status,
+        "phone_number": pn.phone_number if pn.status == 'active' else None,
+    })
+
+
+# ---- Super Admin Portal ----
+ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "")
+
+
+def admin_required(f):
+    @functools.wraps(f)
+    def decorated(*args, **kwargs):
+        if not current_user.is_authenticated:
+            return redirect(url_for("login"))
+        if current_user.email.lower() != ADMIN_EMAIL.lower() or not ADMIN_EMAIL:
+            return "Not Found", 404
+        return f(*args, **kwargs)
+    return decorated
+
+
+@app.route("/super-admin")
+@admin_required
+def super_admin():
+    users = User.query.order_by(User.created_at.desc()).all()
+    user_data = []
+    for u in users:
+        from storage import _load_call_history, get_contacts
+        leads_count = len(get_contacts(user_id=u.id))
+        call_count = len(_load_call_history(user_id=u.id))
+        active_number = ProvisionedNumber.query.filter_by(user_id=u.id, status='active').first()
+        user_data.append({
+            "id": u.id,
+            "email": u.email,
+            "name": u.profile_name or u.email.split("@")[0],
+            "leads": leads_count,
+            "calls": call_count,
+            "active_number": active_number.phone_number if active_number else "None",
+            "created_at": u.created_at.strftime("%b %d, %Y") if u.created_at else "N/A",
+        })
+    return render_template("super_admin.html", users=user_data)
+
+
+@app.route("/api/admin/user-activity/<int:uid>")
+@admin_required
+def api_admin_user_activity(uid):
+    target_user = User.query.get(uid)
+    if not target_user:
+        return jsonify({"error": "User not found"}), 404
+    from storage import _load_call_history, get_contacts
+    calls = _load_call_history(user_id=uid)
+    contacts = get_contacts(user_id=uid)
+    numbers = ProvisionedNumber.query.filter_by(user_id=uid).all()
+    return jsonify({
+        "user": {"id": uid, "email": target_user.email, "name": target_user.profile_name or ""},
+        "total_calls": len(calls),
+        "total_leads": len(contacts),
+        "numbers": [{"phone": n.phone_number, "status": n.status} for n in numbers],
+        "recent_calls": calls[-20:] if calls else [],
+    })
 
 
 # ---- Startup initialization (runs for both direct and gunicorn) ----

@@ -245,6 +245,20 @@
                         </div>
                     </div>
 
+                    <div class="gads-card" id="provisionCard" style="margin-bottom:20px;">
+                        <div class="gads-card-header">
+                            <h3>Alex's Phone Line</h3>
+                            <span id="provisionStatusBadge" style="font-size:0.8rem;padding:3px 10px;border-radius:20px;background:rgba(255,255,255,0.06);color:rgba(255,255,255,0.4);">Checking...</span>
+                        </div>
+                        <div id="provisionContent" style="padding:16px 20px;">
+                            <p id="provisionMsg" style="color:rgba(255,255,255,0.6);font-size:0.9rem;margin:0 0 14px;">Checking Alex's line status...</p>
+                            <button class="gads-btn gads-btn-primary" id="provisionBtn" onclick="provisionLine()" style="display:none;">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
+                                Provision Line
+                            </button>
+                        </div>
+                    </div>
+
                     <div class="gads-quick-actions">
                         <button class="gads-btn gads-btn-primary" onclick="navigateTo('campaigns'); setTimeout(function(){ openWizard(); }, 100);">
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
@@ -3727,6 +3741,88 @@
                     resultDiv.textContent = "Import failed";
                 });
             }
+
+            function checkProvisionStatus() {
+                fetch('/api/provision-status', { credentials: 'same-origin' })
+                    .then(function(r) { return r.json(); })
+                    .then(function(data) {
+                        var badge = document.getElementById('provisionStatusBadge');
+                        var msg = document.getElementById('provisionMsg');
+                        var btn = document.getElementById('provisionBtn');
+                        if (data.provisioned) {
+                            badge.style.background = 'rgba(16,185,129,0.12)';
+                            badge.style.color = '#10b981';
+                            badge.textContent = 'Active';
+                            msg.innerHTML = '<span style="color:#10b981;font-weight:600;">Alex is Ready.</span> Local line: <strong style="color:#fff;">' + data.phone_number + '</strong>';
+                            btn.style.display = 'none';
+                        } else if (data.status === 'provisioning') {
+                            badge.style.background = 'rgba(245,158,11,0.12)';
+                            badge.style.color = '#f59e0b';
+                            badge.textContent = 'Provisioning';
+                            msg.textContent = 'Assigning Alex a local line...';
+                            btn.style.display = 'none';
+                        } else {
+                            badge.style.background = 'rgba(255,255,255,0.06)';
+                            badge.style.color = 'rgba(255,255,255,0.4)';
+                            badge.textContent = 'Not Active';
+                            msg.textContent = 'Alex needs a local phone line to start making calls.';
+                            btn.style.display = '';
+                        }
+                    })
+                    .catch(function() {
+                        var btn = document.getElementById('provisionBtn');
+                        var msg = document.getElementById('provisionMsg');
+                        msg.textContent = 'Alex needs a local phone line to start making calls.';
+                        btn.style.display = '';
+                    });
+            }
+
+            function provisionLine() {
+                var btn = document.getElementById('provisionBtn');
+                var msg = document.getElementById('provisionMsg');
+                var badge = document.getElementById('provisionStatusBadge');
+                btn.disabled = true;
+                btn.textContent = 'Provisioning...';
+                msg.textContent = 'Assigning Alex a local line...';
+                badge.style.background = 'rgba(245,158,11,0.12)';
+                badge.style.color = '#f59e0b';
+                badge.textContent = 'Provisioning';
+
+                fetch('/api/provision-line', {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: { 'Content-Type': 'application/json' }
+                })
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    if (data.success && data.status === 'ready') {
+                        badge.style.background = 'rgba(16,185,129,0.12)';
+                        badge.style.color = '#10b981';
+                        badge.textContent = 'Active';
+                        msg.innerHTML = '<span style="color:#10b981;font-weight:600;">Alex is Ready.</span> Local line: <strong style="color:#fff;">' + data.phone_number + '</strong>';
+                        btn.style.display = 'none';
+                        if (typeof showToast === 'function') showToast('Alex is Ready! Line provisioned: ' + data.phone_number, 'success');
+                    } else {
+                        badge.style.background = 'rgba(239,68,68,0.12)';
+                        badge.style.color = '#ef4444';
+                        badge.textContent = 'Error';
+                        msg.textContent = data.error || 'Provisioning failed. Please try again.';
+                        btn.disabled = false;
+                        btn.textContent = 'Retry Provision';
+                        if (typeof showToast === 'function') showToast(data.error || 'Provisioning failed', 'error');
+                    }
+                })
+                .catch(function() {
+                    badge.style.background = 'rgba(239,68,68,0.12)';
+                    badge.style.color = '#ef4444';
+                    badge.textContent = 'Error';
+                    msg.textContent = 'Connection error. Please try again.';
+                    btn.disabled = false;
+                    btn.textContent = 'Retry Provision';
+                });
+            }
+
+            checkProvisionStatus();
 
     </script>
 
