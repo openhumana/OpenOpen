@@ -381,15 +381,35 @@ ACTION: Reach out within 5 minutes for highest conversion.
             except Exception as e:
                 logger.exception(f"Background admin email send failed for {email}: {e}")
 
-        threading.Thread(target=_send_admin_lead_email, daemon=True).start()
+        def _send_user_resume_email():
+            try:
+                first_name = (name_raw.split()[0] if name_raw else "there")
+                user_subject = "Alex's Resume - OpenHumana"
+                user_text = (
+                    f"Hi {first_name},\n\n"
+                    "Thanks for your interest in Alex and OpenHumana.\n"
+                    "Below is Alex's full resume and introduction.\n\n"
+                    "Best,\n"
+                    "Alex & The OpenHumana Team\n"
+                )
+                from welcome_email import _build_welcome_html
+                user_html = _build_welcome_html(user_name=name_raw, user_email=email_raw)
 
-        # Use the existing configured welcome email (professional resume-style template)
-        from welcome_email import send_welcome_email_async
-        try:
-            send_welcome_email_async(email_raw, name_raw)
-            logger.info(f"Welcome resume email auto-sent to lead: {email_raw}")
-        except Exception as e:
-            logger.exception(f"Failed to enqueue welcome email for lead {email_raw}: {e}")
+                result = send_email(
+                    to_email=email_raw,
+                    subject=user_subject,
+                    html_body=user_html,
+                    text_body=user_text,
+                )
+                if result:
+                    logger.info(f"Resume email sent to lead: {email_raw}")
+                else:
+                    logger.error(f"Lead captured but resume email failed: {email_raw}")
+            except Exception as e:
+                logger.exception(f"Background resume email send failed for {email_raw}: {e}")
+
+        threading.Thread(target=_send_admin_lead_email, daemon=True).start()
+        threading.Thread(target=_send_user_resume_email, daemon=True).start()
 
         # Always return success to the client quickly; email sends happen in background
         return jsonify({"success": True})
