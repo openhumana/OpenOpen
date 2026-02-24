@@ -364,23 +364,31 @@ ACTION: Reach out within 5 minutes for highest conversion.
 """
 
         from gmail_client import send_email
-        result = send_email(
-            to_email=os.environ.get("ADMIN_EMAIL", "openhumana@gmail.com"),
-            subject="1 Hot Lead Received Just Now",
-            html_body=html_body,
-            text_body=text_body
-        )
+        import threading
+
+        def _send_admin_lead_email():
+            try:
+                result = send_email(
+                    to_email=os.environ.get("ADMIN_EMAIL", "openhumana@gmail.com"),
+                    subject="1 Hot Lead Received Just Now",
+                    html_body=html_body,
+                    text_body=text_body,
+                )
+                if result:
+                    logger.info(f"Lead captured and emailed: {name} ({email}, {phone})")
+                else:
+                    logger.error(f"Lead captured but admin email failed: {name} ({email})")
+            except Exception as e:
+                logger.exception(f"Background admin email send failed for {email}: {e}")
+
+        threading.Thread(target=_send_admin_lead_email, daemon=True).start()
 
         from welcome_email import send_welcome_email_async
         send_welcome_email_async(email, name)
         logger.info(f"Alex's resume auto-sent to lead: {email}")
 
-        if result:
-            logger.info(f"Lead captured and emailed: {name} ({email}, {phone})")
-            return jsonify({"success": True})
-        else:
-            logger.error(f"Lead captured but email failed: {name} ({email})")
-            return jsonify({"success": False, "error": "Failed to send notification email"}), 500
+        # Always return success to the client quickly; email sends happen in background
+        return jsonify({"success": True})
 
     except Exception as e:
         logger.error(f"Lead capture error: {e}")
