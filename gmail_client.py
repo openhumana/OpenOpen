@@ -14,7 +14,8 @@ from email import encoders
 logger = logging.getLogger("voicemail_app")
 
 GMAIL_ADDRESS = os.environ.get("GMAIL_ADDRESS", "openhumana@gmail.com")
-GMAIL_APP_PASSWORD = os.environ.get("GMAIL_APP_PASSWORD", "")
+_raw_pw = os.environ.get("GMAIL_APP_PASSWORD", "")
+GMAIL_APP_PASSWORD = _raw_pw.replace("\xa0", " ").replace(" ", "").strip()
 
 SMTP_HOST = "smtp.gmail.com"
 SMTP_PORT = 587
