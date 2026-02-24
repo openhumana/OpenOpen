@@ -33,8 +33,8 @@ def send_email(to_email, subject, html_body, text_body=None, csv_attachment=None
 
         alt = MIMEMultipart("alternative")
         if text_body:
-            alt.attach(MIMEText(text_body, "plain"))
-        alt.attach(MIMEText(html_body, "html"))
+            alt.attach(MIMEText(text_body, "plain", "utf-8"))
+        alt.attach(MIMEText(html_body, "html", "utf-8"))
         msg.attach(alt)
 
         if csv_attachment and csv_filename:
@@ -49,7 +49,7 @@ def send_email(to_email, subject, html_body, text_body=None, csv_attachment=None
             server.starttls()
             server.ehlo()
             server.login(GMAIL_ADDRESS, GMAIL_APP_PASSWORD)
-            server.sendmail(GMAIL_ADDRESS, to_email, msg.as_string())
+            server.sendmail(GMAIL_ADDRESS, to_email, msg.as_bytes())
 
         logger.info(f"Email sent successfully to {to_email}: {subject}")
         return True
