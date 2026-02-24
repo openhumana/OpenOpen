@@ -1,13 +1,11 @@
 """
-gmail_client.py - Gmail integration via Replit connector.
-Sends emails using the connected Gmail account through the Gmail API.
+gmail_client.py - Gmail SMTP integration via App Password.
+Sends emails using openhumana@gmail.com through Gmail SMTP with app password.
 """
 
 import os
-import base64
-import json
+import smtplib
 import logging
-import requests
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.base import MIMEBase
@@ -15,74 +13,21 @@ from email import encoders
 
 logger = logging.getLogger("voicemail_app")
 
-_connection_settings = None
+GMAIL_ADDRESS = os.environ.get("GMAIL_ADDRESS", "openhumana@gmail.com")
+GMAIL_APP_PASSWORD = os.environ.get("GMAIL_APP_PASSWORD", "")
 
-
-def _get_access_token():
-    global _connection_settings
-
-    if (_connection_settings
-        and _connection_settings.get("settings", {}).get("expires_at")
-        and _parse_expiry(_connection_settings["settings"]["expires_at"]) > _now_ms()):
-        return _connection_settings["settings"]["access_token"]
-
-    hostname = os.environ.get("REPLIT_CONNECTORS_HOSTNAME", "")
-    repl_identity = os.environ.get("REPL_IDENTITY", "")
-    web_repl_renewal = os.environ.get("WEB_REPL_RENEWAL", "")
-
-    if repl_identity:
-        x_replit_token = f"repl {repl_identity}"
-    elif web_repl_renewal:
-        x_replit_token = f"depl {web_repl_renewal}"
-    else:
-        raise Exception("No Replit identity token found")
-
-    if not hostname:
-        raise Exception("REPLIT_CONNECTORS_HOSTNAME not set")
-
-    url = f"https://{hostname}/api/v2/connection?include_secrets=true&connector_names=google-mail"
-    resp = requests.get(url, headers={
-        "Accept": "application/json",
-        "X-Replit-Token": x_replit_token,
-    })
-    resp.raise_for_status()
-    data = resp.json()
-
-    items = data.get("items", [])
-    if not items:
-        raise Exception("Gmail not connected - no connection found")
-
-    _connection_settings = items[0]
-    settings = _connection_settings.get("settings", {})
-    access_token = settings.get("access_token") or settings.get("oauth", {}).get("credentials", {}).get("access_token")
-
-    if not access_token:
-        raise Exception("Gmail not connected - no access token")
-
-    return access_token
-
-
-def _now_ms():
-    import time
-    return int(time.time() * 1000)
-
-
-def _parse_expiry(expires_at):
-    try:
-        from datetime import datetime
-        if isinstance(expires_at, (int, float)):
-            return int(expires_at * 1000) if expires_at < 1e12 else int(expires_at)
-        dt = datetime.fromisoformat(str(expires_at).replace("Z", "+00:00"))
-        return int(dt.timestamp() * 1000)
-    except Exception:
-        return 0
+SMTP_HOST = "smtp.gmail.com"
+SMTP_PORT = 587
 
 
 def send_email(to_email, subject, html_body, text_body=None, csv_attachment=None, csv_filename=None):
     try:
-        access_token = _get_access_token()
+        if not GMAIL_APP_PASSWORD:
+            logger.error("GMAIL_APP_PASSWORD not set")
+            return False
 
         msg = MIMEMultipart("mixed")
+        msg["From"] = GMAIL_ADDRESS
         msg["To"] = to_email
         msg["Subject"] = subject
 
@@ -99,20 +44,15 @@ def send_email(to_email, subject, html_body, text_body=None, csv_attachment=None
             part.add_header("Content-Disposition", f"attachment; filename={csv_filename}")
             msg.attach(part)
 
-        raw_message = base64.urlsafe_b64encode(msg.as_bytes()).decode("utf-8")
+        with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
+            server.ehlo()
+            server.starttls()
+            server.ehlo()
+            server.login(GMAIL_ADDRESS, GMAIL_APP_PASSWORD)
+            server.sendmail(GMAIL_ADDRESS, to_email, msg.as_string())
 
-        url = "https://gmail.googleapis.com/gmail/v1/users/me/messages/send"
-        resp = requests.post(url, headers={
-            "Authorization": f"Bearer {access_token}",
-            "Content-Type": "application/json",
-        }, json={"raw": raw_message})
-
-        if resp.status_code == 200 or resp.status_code == 201:
-            logger.info(f"Email sent successfully to {to_email}: {subject}")
-            return True
-        else:
-            logger.error(f"Gmail API error {resp.status_code}: {resp.text}")
-            return False
+        logger.info(f"Email sent successfully to {to_email}: {subject}")
+        return True
 
     except Exception as e:
         logger.error(f"Failed to send email to {to_email}: {e}")
@@ -121,25 +61,15 @@ def send_email(to_email, subject, html_body, text_body=None, csv_attachment=None
 
 def test_connection():
     try:
-        token = _get_access_token()
-        if not token:
-            return {"connected": False, "error": "No access token available"}
+        if not GMAIL_APP_PASSWORD:
+            return {"connected": False, "error": "GMAIL_APP_PASSWORD not set"}
 
-        email = ""
-        if _connection_settings:
-            settings = _connection_settings.get("settings", {})
-            oauth = settings.get("oauth", {})
-            creds = oauth.get("credentials", {})
-            raw = creds.get("raw", {})
-            email = raw.get("email", "") or raw.get("login", "") or creds.get("email", "")
+        with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
+            server.ehlo()
+            server.starttls()
+            server.ehlo()
+            server.login(GMAIL_ADDRESS, GMAIL_APP_PASSWORD)
 
-        resp = requests.get(
-            "https://gmail.googleapis.com/gmail/v1/users/me/labels",
-            headers={"Authorization": f"Bearer {token}"},
-            params={"maxResults": 1}
-        )
-        if resp.status_code == 200:
-            return {"connected": True, "email": email or "Connected"}
-        return {"connected": False, "error": f"API returned {resp.status_code}"}
+        return {"connected": True, "email": GMAIL_ADDRESS}
     except Exception as e:
         return {"connected": False, "error": str(e)}
