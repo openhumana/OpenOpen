@@ -27,7 +27,7 @@ app.post('/api/chat', async (req, res) => {
         const alexReply = completion.choices[0].message.content;
 
         // JOB 2: THE REPORTER (Ping the Digital Office)
-        bot.telegram.sendMessage(process.env.TELEGRAM_CHAT_ID, 
+        bot.telegram.sendMessage(process.env.ADMIN_CHAT_ID, 
             `💼 **Alex Interaction Report**\n\nLead said: "${message}"\n\nAlex replied: "${alexReply}"`
         ).catch(err => console.error("Telegram error:", err.message));
 
