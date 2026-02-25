@@ -314,6 +314,9 @@ app.get('/super-admin', requireAdmin, (req, res) => {
     res.render('super_admin.html', { users: users });
 });
 
+// Health check — responds instantly for Railway Metal
+app.get('/healthz', (req, res) => res.status(200).send('ok'));
+
 // ============================================================
 // FAST START: Listen on port IMMEDIATELY so Railway doesn't timeout
 // ============================================================
