@@ -1,7 +1,11 @@
+require('dotenv').config();
+
 const express = require('express');
 const { Groq } = require('groq-sdk');
 const { Telegraf } = require('telegraf');
-require('dotenv').config();
+
+// Debug: verify BOT_TOKEN is loaded (shows only first 5 chars)
+console.log('🔑 BOT_TOKEN loaded:', process.env.BOT_TOKEN ? process.env.BOT_TOKEN.substring(0, 5) + '...' : 'MISSING');
 
 const app = express();
 app.use(express.json());
@@ -41,10 +45,11 @@ app.post('/api/chat', async (req, res) => {
 // 3. Safe Start: Don't let a bad token crash the whole site
 const startAlex = async () => {
     try {
-        await bot.launch(); //
+        await bot.launch();
         console.log('✅ Alex: Connected to Telegram Digital Office');
     } catch (err) {
-        console.error('❌ Alex: Telegram connection failed (401 Unauthorized). Check your BOT_TOKEN!');
+        console.error('❌ Alex: Telegram connection failed. Error:', err.message);
+        console.error('🔍 Check your BOT_TOKEN in Railway environment variables. Current token starts with:', process.env.BOT_TOKEN ? process.env.BOT_TOKEN.substring(0, 5) + '...' : 'MISSING');
     }
     const PORT = process.env.PORT || 3000;
     app.listen(PORT, () => console.log(`🚀 Alex: Sales Agent live on port ${PORT}`));
