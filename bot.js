@@ -1,38 +1,34 @@
 const http = require('http');
+const fs = require('fs');
+const path = require('path');
 
 const server = http.createServer((req, res) => {
-  res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-  res.end(`
-  <!DOCTYPE html>
-  <html lang="en">
-    <head>
-      <meta charset="UTF-8">
-      <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>Open Humana</title>
-      <style>
-        body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #000; color: #fff; display: flex; justify-content: center; align-items: center; height: 100vh; overflow: hidden; }
-        .container { text-align: center; }
-        h1 { font-weight: 200; letter-spacing: 5px; text-transform: uppercase; font-size: 2.5rem; margin: 0; }
-        .status-dot { height: 8px; width: 8px; background-color: #0f0; border-radius: 50%; display: inline-block; margin-right: 10px; box-shadow: 0 0 10px #0f0; }
-        .footer { position: absolute; bottom: 20px; font-size: 0.8rem; opacity: 0.4; display: flex; align-items: center; }
-      </style>
-    </head>
-    <body>
-      <div class="container">
-        <h1>Open Humana</h1>
-      </div>
-      <div class="footer">
-        <span class="status-dot"></span> System Encrypted & Secure
-      </div>
-    </body>
-  </html>
-`);
+    // This tells the server to look for your original 'index.html' file
+    const filePath = path.join(__dirname, req.url === '/' ? 'index.html' : req.url);
+    
+    fs.readFile(filePath, (err, data) => {
+        if (err) {
+            // Keep Railway happy with a 200 even if a file is missing
+            res.writeHead(200, { 'Content-Type': 'text/plain' });
+            res.end('Service Online');
+            return;
+        }
+        res.writeHead(200);
+        res.end(data);
+    });
 });
 
-// Use Railway's dynamic port or default to 8080
-const PORT = process.env.PORT || 8080;
+// Bind to 0.0.0.0 so Railway can reach the site
+server.listen(process.env.PORT || 8080, '0.0.0.0');
+bot.on('text', async (ctx) => {
+    // 1. OBSERVE: Log every message to the server console
+    console.log(`Alex observing: ${ctx.message.text}`);
 
-// '0.0.0.0' allows Railway to route external traffic to your app
-server.listen(PORT, '0.0.0.0', () => {
-  console.log(`🚀 Open Humana Website is LIVE on port ${PORT}`);
+    // 2. SILENT LOGIC: Only reply if it's a private 1-on-1 chat with you
+    if (ctx.chat.type === 'private') {
+        const response = await generateAIResponse(ctx.message.text);
+        return ctx.reply(response);
+    }
+    
+    // Otherwise, he stays silent.
 });
