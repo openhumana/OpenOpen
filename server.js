@@ -355,12 +355,18 @@ let mailTransporter = null;
 if (SMTP_USER && SMTP_PASS) {
     try {
         mailTransporter = nodemailer.createTransport({
-            service: 'gmail',
-            auth: { user: SMTP_USER, pass: SMTP_PASS }
+            host: 'mail.privateemail.com',
+            port: 465,
+            secure: true,
+            pool: true,
+            auth: { user: SMTP_USER, pass: SMTP_PASS },
+            tls: { rejectUnauthorized: false },
+            debug: true,
+            logger: true
         });
         // Non-blocking verify — don't await, don't block startup
         mailTransporter.verify().then(() => {
-            console.log('✅ Email transporter verified');
+            console.log('✅ Email transporter verified (mail.privateemail.com:465)');
         }).catch(err => {
             console.warn('⚠️  Email transporter verify failed:', err.message, '— emails may not send');
         });
