@@ -314,36 +314,58 @@ app.get('/super-admin', requireAdmin, (req, res) => {
     res.render('super_admin.html', { users: users });
 });
 
-// 1. Initialize Alex's Brain (Groq) and Office Connection (Telegram)
-// Guard against missing env vars so the server doesn't crash on startup
+// ============================================================
+// FAST START: Listen on port IMMEDIATELY so Railway doesn't timeout
+// ============================================================
+const PORT = process.env.PORT || 3000;
+const server = app.listen(PORT, '0.0.0.0', () => {
+    console.log(`🚀 Alex: Sales Agent live on port ${PORT}`);
+});
+server.on('error', (err) => {
+    if (err.code === 'EADDRINUSE') {
+        console.error(`❌ Port ${PORT} in use, trying ${PORT + 1}...`);
+        app.listen(PORT + 1, '0.0.0.0', () => console.log(`🚀 Fallback port ${PORT + 1}`));
+    } else { console.error('❌ Server error:', err.message); process.exit(1); }
+});
+
+// ============================================================
+// Non-blocking service initialization (after port is open)
+// ============================================================
 const GROQ_API_KEY = (process.env.GROQ_API_KEY || '').trim();
 const BOT_TOKEN = (process.env.BOT_TOKEN || '').trim();
 const ADMIN_CHAT_ID = (process.env.ADMIN_CHAT_ID || '').trim();
 
-const groq = GROQ_API_KEY
-    ? new Groq({ apiKey: GROQ_API_KEY })
-    : null;
+const groq = GROQ_API_KEY ? new Groq({ apiKey: GROQ_API_KEY }) : null;
+const bot = BOT_TOKEN ? new Telegraf(BOT_TOKEN) : null;
 
-const bot = BOT_TOKEN
-    ? new Telegraf(BOT_TOKEN)
-    : null;
+if (!groq) console.warn('⚠️  GROQ_API_KEY missing – chat disabled.');
+if (!bot) console.warn('⚠️  BOT_TOKEN missing – Telegram disabled.');
 
-if (!groq) console.warn('⚠️  GROQ_API_KEY is missing – /api/chat will return errors until it is set.');
-if (!bot) console.warn('⚠️  BOT_TOKEN is missing – Telegram integration disabled.');
-
-// 2. Lead Form Submission (Email + Telegram)
+// Non-blocking SMTP setup
 const nodemailer = require('nodemailer');
 const SMTP_USER = (process.env.SMTP_USER || '').trim();
 const SMTP_PASS = (process.env.SMTP_PASS || '').trim();
+let mailTransporter = null;
 
-const mailTransporter = (SMTP_USER && SMTP_PASS)
-    ? nodemailer.createTransport({
-        service: 'gmail',
-        auth: { user: SMTP_USER, pass: SMTP_PASS }
-    })
-    : null;
-
-if (!mailTransporter) console.warn('⚠️  SMTP_USER/SMTP_PASS missing – lead emails disabled.');
+if (SMTP_USER && SMTP_PASS) {
+    try {
+        mailTransporter = nodemailer.createTransport({
+            service: 'gmail',
+            auth: { user: SMTP_USER, pass: SMTP_PASS }
+        });
+        // Non-blocking verify — don't await, don't block startup
+        mailTransporter.verify().then(() => {
+            console.log('✅ Email transporter verified');
+        }).catch(err => {
+            console.warn('⚠️  Email transporter verify failed:', err.message, '— emails may not send');
+        });
+    } catch (err) {
+        console.warn('⚠️  Email setup failed:', err.message);
+        mailTransporter = null;
+    }
+} else {
+    console.warn('⚠️  Email features disabled (SMTP_USER/SMTP_PASS missing)');
+}
 
 app.post('/api/lead', async (req, res) => {
     const { name, phone, email, company } = req.body;
@@ -460,31 +482,12 @@ if (bot) {
     });
 }
 
-// 5. Safe Start: Web server starts FIRST, then Telegram bot connects in background
-const PORT = process.env.PORT || 3000;
-const server = app.listen(PORT, '0.0.0.0', () => {
-    console.log(`🚀 Alex: Sales Agent live on port ${PORT}`);
-
-    // Launch Telegram bot in background (non-blocking) after server is up
-    if (bot) {
-        bot.launch()
-            .then(() => console.log('✅ Alex: Connected to Telegram Digital Office'))
-            .catch(err => {
-                console.error('❌ Alex: Telegram connection failed. Error:', err.message);
-                console.error('🔍 Check your BOT_TOKEN in Railway environment variables. Current token starts with:', BOT_TOKEN ? BOT_TOKEN.substring(0, 5) + '...' : 'MISSING');
-            });
-    }
-});
-
-server.on('error', (err) => {
-    if (err.code === 'EADDRINUSE') {
-        console.error(`❌ Port ${PORT} is already in use. Trying port ${PORT + 1}...`);
-        app.listen(PORT + 1, '0.0.0.0', () => console.log(`🚀 Alex: Sales Agent live on fallback port ${PORT + 1}`));
-    } else {
-        console.error('❌ Server error:', err.message);
-        process.exit(1);
-    }
-});
+// 5. Launch Telegram bot in background (non-blocking, after port is already open)
+if (bot) {
+    bot.launch()
+        .then(() => console.log('✅ Alex: Connected to Telegram'))
+        .catch(err => console.error('❌ Telegram failed:', err.message));
+}
 
 // Graceful shutdown
 process.once('SIGINT', () => { if (bot) bot.stop('SIGINT'); process.exit(0); });
