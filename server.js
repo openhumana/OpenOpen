@@ -11,11 +11,18 @@ console.log('🔑 BOT_TOKEN loaded:', process.env.BOT_TOKEN ? process.env.BOT_TO
 const path = require('path');
 const app = express();
 app.use(express.json());
-app.use('/static', express.static(path.join(__dirname, 'static'))); // Serve CSS, images, videos at /static/*
-app.use('/templates', express.static(path.join(__dirname, 'templates'))); // Serve template assets
 
-// Configure Nunjucks as the template engine (Jinja2-compatible)
-nunjucks.configure('templates', {
+// Absolute static pathing – serves CSS/JS/images with correct MIME types
+app.use('/static', express.static(path.join(__dirname, 'static'), {
+    setHeaders(res, filePath) {
+        if (filePath.endsWith('.css'))  res.setHeader('Content-Type', 'text/css');
+        if (filePath.endsWith('.js'))   res.setHeader('Content-Type', 'application/javascript');
+    }
+}));
+app.use('/templates', express.static(path.join(__dirname, 'templates')));
+
+// Configure Nunjucks with absolute template path (Jinja2-compatible)
+nunjucks.configure(path.join(__dirname, 'templates'), {
     autoescape: true,
     express: app,
     watch: false,
@@ -23,19 +30,19 @@ nunjucks.configure('templates', {
 });
 app.set('view engine', 'html');
 
-// Serve HTML pages (using res.render for Nunjucks template processing)
-app.get('/', (req, res) => res.render('landing.html'));
+// Serve HTML pages – every route uses res.render with a context object
+app.get('/', (req, res) => res.render('landing.html', {}));
 app.get('/login', (req, res) => res.render('login.html', { signup: false, error: null, info_message: null, google_oauth: false, app_password_set: false }));
-app.get('/about', (req, res) => res.render('about.html'));
-app.get('/contact', (req, res) => res.render('contact.html'));
-app.get('/help', (req, res) => res.render('help.html'));
-app.get('/privacy', (req, res) => res.render('privacy.html'));
-app.get('/terms', (req, res) => res.render('terms.html'));
-app.get('/compliance', (req, res) => res.render('compliance.html'));
-app.get('/blog', (req, res) => res.render('blog_page.html'));
+app.get('/about', (req, res) => res.render('about.html', {}));
+app.get('/contact', (req, res) => res.render('contact.html', {}));
+app.get('/help', (req, res) => res.render('help.html', {}));
+app.get('/privacy', (req, res) => res.render('privacy.html', {}));
+app.get('/terms', (req, res) => res.render('terms.html', {}));
+app.get('/compliance', (req, res) => res.render('compliance.html', {}));
+app.get('/blog', (req, res) => res.render('blog_page.html', {}));
 app.get('/verify-otp', (req, res) => res.render('verify_otp.html', { email: '', error: null }));
 app.get('/profile-setup', (req, res) => res.render('profile_setup.html', { user: { profile_image_url: null, profile_name: '' } }));
-app.get('/super-admin', (req, res) => res.render('super_admin.html'));
+app.get('/super-admin', (req, res) => res.render('super_admin.html', {}));
 app.get('/index', (req, res) => res.render('index.html', { user: null, telnyx_from: '' }));
 
 // 1. Initialize Alex's Brain (Groq) and Office Connection (Telegram)
