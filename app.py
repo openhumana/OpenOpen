@@ -673,15 +673,15 @@ def _detect_and_set_base_url():
 def dashboard():
     """Serve the main dashboard page (requires authentication)."""
     _detect_and_set_base_url()
-    telnyx_from = os.environ.get("TELNYX_FROM_NUMBER", "Not set")
+    secure_from = os.environ.get("TELNYX_FROM_NUMBER", "Not set")
     user_data = current_user.to_dict() if current_user.is_authenticated else {}
-    return render_template("index.html", telnyx_from=telnyx_from, user=user_data)
+    return render_template("index.html", secure_from=secure_from, user=user_data)
 
 
 # ---- Audio File Serving ----
 @app.route("/audio/<filename>")
 def serve_audio(filename):
-    """Serve uploaded audio files so Telnyx can access them (no auth - Telnyx needs direct access)."""
+    """Serve uploaded audio files for call playback (no auth - infrastructure needs direct access)."""
     response = send_from_directory(UPLOAD_FOLDER, filename)
     response.headers["Cache-Control"] = "no-cache"
     return response
@@ -689,7 +689,7 @@ def serve_audio(filename):
 
 @app.route("/audio/personalized/<filename>")
 def serve_personalized_audio(filename):
-    """Serve personalized voicemail audio files (no auth - Telnyx needs direct access)."""
+    """Serve personalized voicemail audio files (no auth - infrastructure needs direct access)."""
     pvm_dir = os.path.join(UPLOAD_FOLDER, "personalized")
     response = send_from_directory(pvm_dir, filename)
     response.headers["Cache-Control"] = "no-cache"
@@ -2145,6 +2145,18 @@ def api_numbers_search():
 @app.route("/api/numbers/buy", methods=["POST"])
 @login_required
 def api_numbers_buy():
+    """Purchase a number — enforces one-number governance per user."""
+    user_id = current_user.id
+
+    # One Number Governance: check if user already has an active number
+    existing_active = ProvisionedNumber.query.filter_by(user_id=user_id, status='active').first()
+    if existing_active:
+        return jsonify({
+            "error": "You already have an active line. Use 'Request Additional Line' to request more.",
+            "has_active": True,
+            "active_number": existing_active.phone_number
+        }), 403
+
     data = request.get_json() or {}
     phone_number = data.get("phone_number", "").strip()
     if not phone_number:
@@ -2173,6 +2185,13 @@ def api_numbers_buy():
     if not order_result.get("success"):
         return jsonify({"error": f"Failed to purchase number: {order_result.get('error')}"}), 400
 
+    # Record the provisioned number for this user
+    pn = ProvisionedNumber(user_id=user_id, phone_number=phone_number, status='active')
+    pn.telnyx_order_id = order_result.get("order_id")
+    pn.telnyx_connection_id = connection_id
+    db.session.add(pn)
+    db.session.commit()
+
     if auto_setup and connection_id and not data.get("skip_assign"):
         import time
         time.sleep(2)
@@ -2191,10 +2210,69 @@ def api_numbers_buy():
 @app.route("/api/numbers/owned", methods=["GET"])
 @login_required
 def api_numbers_owned():
+    """Return only numbers belonging to the current user (strict isolation)."""
+    user_id = current_user.id
+    user_numbers = ProvisionedNumber.query.filter_by(user_id=user_id).all()
+    user_phone_set = {pn.phone_number for pn in user_numbers}
+
+    # If user has provisioned numbers, filter the Telnyx list to only theirs
     result = list_owned_numbers()
-    if result.get("success"):
-        return jsonify(result)
-    return jsonify(result), 400
+    if result.get("success") and user_phone_set:
+        filtered = [n for n in result.get("numbers", []) if n.get("phone_number") in user_phone_set]
+        result["numbers"] = filtered
+        result["total"] = len(filtered)
+    elif result.get("success") and not user_phone_set:
+        # User has no provisioned numbers — show empty list
+        result["numbers"] = []
+        result["total"] = 0
+
+    # Include governance info
+    active_count = sum(1 for pn in user_numbers if pn.status == 'active')
+    result["active_count"] = active_count
+    result["can_purchase"] = active_count < 1
+
+    return jsonify(result)
+
+
+@app.route("/api/request-additional-line", methods=["POST"])
+@login_required
+def api_request_additional_line():
+    """Send a Telegram alert to admin requesting line limit increase. No number is purchased."""
+    user_id = current_user.id
+    user_email = current_user.email if hasattr(current_user, 'email') else 'Unknown'
+    user_name = current_user.profile_name if hasattr(current_user, 'profile_name') else 'Unknown'
+    data = request.get_json() or {}
+    reason = data.get("reason", "No reason provided")
+
+    active_numbers = ProvisionedNumber.query.filter_by(user_id=user_id, status='active').all()
+    active_list = ", ".join([pn.phone_number for pn in active_numbers]) or "None"
+
+    # Send Telegram notification to admin
+    import requests as req_lib
+    bot_token = os.environ.get("BOT_TOKEN", "").strip()
+    admin_chat_id = os.environ.get("ADMIN_CHAT_ID", "").strip()
+    if bot_token and admin_chat_id:
+        try:
+            msg = (
+                f"📞 **Additional Line Request**\n\n"
+                f"User: {user_name}\n"
+                f"Email: {user_email}\n"
+                f"User ID: {user_id}\n"
+                f"Current Lines: {active_list}\n"
+                f"Reason: {reason}\n\n"
+                f"Reply /approve_{user_id} to increase their limit."
+            )
+            req_lib.post(
+                f"https://api.telegram.org/bot{bot_token}/sendMessage",
+                json={"chat_id": admin_chat_id, "text": msg, "parse_mode": "Markdown"}
+            )
+        except Exception as e:
+            logger.error(f"Telegram request-line alert failed: {e}")
+
+    return jsonify({
+        "success": True,
+        "message": "Your request has been sent to the admin. You'll be notified when approved."
+    })
 
 
 @app.route("/api/numbers/release", methods=["POST"])
@@ -2268,7 +2346,7 @@ def _get_current_webhook_url():
 @app.route("/api/provision-line", methods=["POST"])
 @login_required
 def api_provision_line():
-    """Automated Telnyx number provisioning: search, purchase, assign to user."""
+    """Automated number provisioning: search, purchase, assign to user."""
     user_id = current_user.id
     existing = ProvisionedNumber.query.filter_by(user_id=user_id, status='active').first()
     if existing:

@@ -43,7 +43,7 @@ app.get('/blog', (req, res) => res.render('blog_page.html', {}));
 app.get('/verify-otp', (req, res) => res.render('verify_otp.html', { email: '', error: null }));
 app.get('/profile-setup', (req, res) => res.render('profile_setup.html', { user: { profile_image_url: null, profile_name: '' } }));
 app.get('/super-admin', (req, res) => res.render('super_admin.html', {}));
-app.get('/index', (req, res) => res.render('index.html', { user: null, telnyx_from: '' }));
+app.get('/index', (req, res) => res.render('index.html', { user: null, secure_from: '' }));
 
 // 1. Initialize Alex's Brain (Groq) and Office Connection (Telegram)
 // Guard against missing env vars so the server doesn't crash on startup

@@ -113,11 +113,11 @@ def make_call(number, from_number_override=None):
     webhook_url = _get_webhook_url()
 
     if not os.environ.get("TELNYX_API_KEY", ""):
-        return None, "TELNYX_API_KEY is not set"
+        return None, "Call infrastructure API key is not set"
     if not connection_id:
-        return None, "No Call Control Application found. Create one in the Phone Numbers page or set TELNYX_CONNECTION_ID."
+        return None, "No Call Control Application found. Create one in the Phone Numbers page or contact support."
     if not from_number:
-        return None, "TELNYX_FROM_NUMBER is not set. Add a caller ID number in Settings or buy one in Phone Numbers."
+        return None, "No caller ID number configured. Add one in Settings or provision a new line in Phone Numbers."
 
     number = _normalize_number(number)
     logger.info(f"Placing call to {number} with webhook_url: {webhook_url}")
@@ -188,17 +188,17 @@ def make_call(number, from_number_override=None):
             except Exception:
                 error_detail = resp.text[:300]
             logger.error(f"Telnyx API error {resp.status_code}: {resp.text}")
-            return None, f"Telnyx error ({resp.status_code}): {error_detail}"
+            return None, f"Call infrastructure error ({resp.status_code}): {error_detail}"
         data = resp.json().get("data", {})
         call_control_id = data.get("call_control_id")
         logger.info(f"Call placed to {number}, call_control_id={call_control_id}")
         return call_control_id, None
     except requests.exceptions.Timeout:
         logger.error(f"Timeout placing call to {number}")
-        return None, "Telnyx API request timed out. Try again."
+        return None, "Call infrastructure request timed out. Try again."
     except requests.exceptions.ConnectionError:
         logger.error(f"Connection error placing call to {number}")
-        return None, "Could not connect to Telnyx API. Check your internet connection."
+        return None, "Could not connect to call infrastructure. Check your internet connection."
     except Exception as e:
         logger.error(f"Failed to place call to {number}: {e}")
         return None, str(e)
