@@ -4,31 +4,35 @@ const fs = require('fs');
 const path = require('path');
 
 // 1. Initialize Alex (The Bot)
-// This pulls the token from your Railway Variables tab
-const bot = new Telegraf(process.env.BOT_TOKEN);
+const token = process.env.BOT_TOKEN;
+
+// DEBUG: This helps us see if Railway is actually passing the token to the code
+if (!token) {
+    console.error("CRITICAL: BOT_TOKEN variable is empty in Railway!");
+} else {
+    console.log(`System: Token detected (starting with: ${token.substring(0, 5)}...)`);
+}
+
+const bot = new Telegraf('8796414492:AAHp90vVeJXinWRD-e2OZNFAu2Giqv9KQZk')
 
 // 2. THE WEBSITE SERVER (Handles landing page + CSS/Images)
 const server = http.createServer((req, res) => {
     let filePath;
     
-    // Route for the homepage: looks in templates/landing.html
     if (req.url === '/' || req.url === '/index.html') {
         filePath = path.join(__dirname, 'templates', 'landing.html');
     } else {
-        // Route for CSS, Images, and JS (e.g., /static/landing.css)
-        // This looks for files in your project folders based on the URL
+        // Correctly serves /static/ files for your styles/images
         filePath = path.join(__dirname, req.url.replace(/^\//, ''));
     }
 
     fs.readFile(filePath, (err, data) => {
         if (err) {
-            // Fallback to keep the server from crashing if a file is missing
             res.writeHead(200, { 'Content-Type': 'text/plain' });
             res.end('Open Humana: System Online');
             return;
         }
 
-        // Identify the file type so styles and images load correctly
         const ext = path.extname(filePath).toLowerCase();
         const mimeTypes = {
             '.html': 'text/html',
@@ -45,34 +49,31 @@ const server = http.createServer((req, res) => {
     });
 });
 
-// Start the web server on Railway's assigned port
 server.listen(process.env.PORT || 8080, '0.0.0.0', () => {
-    console.log("🚀 Web Server initialized. Website is live at openhumana.com");
+    console.log("🚀 Web Server initialized. openhumana.com is live.");
 });
 
 // 3. SILENT OBSERVER LOGIC
 bot.on('text', async (ctx) => {
-    // Alex logs everything (observing the server)
-    console.log(`Alex observing message from ${ctx.from.username}: ${ctx.message.text}`);
+    // Observer Role: Log all activity to the server console
+    console.log(`[Observer] Message from ${ctx.from.username || 'User'}: ${ctx.message.text}`);
 
-    // Alex ONLY replies if it is a private 1-on-1 message to you
+    // Response Role: Alex ONLY speaks in private 1-on-1 chats
     if (ctx.chat.type === 'private') {
         try {
-            // For now, this confirms the connection is working. 
-            // You can replace this with your actual AI brain call.
-            await ctx.reply("System authorized. Observing and ready for directives.");
+            await ctx.reply("System authorized. I am observing and ready for private directives.");
         } catch (error) {
-            console.error("Alex failed to reply:", error.message);
+            console.error("Telegram Reply Error:", error.message);
         }
     }
 });
 
-// 4. LAUNCH THE BRAIN
+// 4. LAUNCH
 bot.launch()
     .then(() => console.log("🤖 Alex is now observing Telegram..."))
     .catch(err => {
-        console.error("❌ Bot failed to start. 401 means your BOT_TOKEN is wrong!");
-        console.error(err.message);
+        console.error("❌ Bot failed to start. Telegram rejected the token (401).");
+        console.error("Error Detail:", err.message);
     });
 
 // Handle graceful shutdowns
