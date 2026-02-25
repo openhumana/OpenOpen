@@ -86,6 +86,22 @@
     animEls.forEach(function (el) { observer.observe(el); });
   }
 
+  /* ---------- HERO TITLE WORD REVEAL ---------- */
+  var titleWords = document.querySelectorAll('.title-word');
+  if (titleWords.length) {
+    // Reveal words with staggered delay once the hero is in view
+    var heroObserver = new IntersectionObserver(function (entries) {
+      entries.forEach(function (entry) {
+        if (entry.isIntersecting) {
+          titleWords.forEach(function (w) { w.classList.add('revealed'); });
+          heroObserver.unobserve(entry.target);
+        }
+      });
+    }, { threshold: 0.2 });
+    var heroSection = document.querySelector('.hero');
+    if (heroSection) heroObserver.observe(heroSection);
+  }
+
   /* ---------- HERO CANVAS (subtle particle effect) ---------- */
   var canvas = document.getElementById('heroCanvas');
   if (canvas) {
