@@ -1,19 +1,36 @@
+// ============================================================
+// IMMEDIATE PORT BINDING — Railway Metal requires < 5s response
+// ============================================================
 require('dotenv').config();
-
 const express = require('express');
+const path = require('path');
+const fs = require('fs');
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+// Health check responds before anything else loads
+app.get('/healthz', (req, res) => res.status(200).send('ok'));
+
+// Bind port FIRST — before loading any heavy modules
+const server = app.listen(PORT, '0.0.0.0', () => {
+    console.log(`🚀 Alex: Sales Agent live on port ${PORT}`);
+});
+server.on('error', (err) => {
+    if (err.code === 'EADDRINUSE') {
+        app.listen(PORT + 1, '0.0.0.0', () => console.log(`🚀 Fallback port ${PORT + 1}`));
+    } else { console.error('❌ Server error:', err.message); process.exit(1); }
+});
+
+// ============================================================
+// Now load heavy modules (port is already open)
+// ============================================================
 const nunjucks = require('nunjucks');
 const session = require('express-session');
 const bcrypt = require('bcryptjs');
-const fs = require('fs');
-const { createClient } = require('@supabase/supabase-js');
-const { Groq } = require('groq-sdk');
-const { Telegraf } = require('telegraf');
-
-// Debug: verify BOT_TOKEN is loaded (shows only first 5 chars)
-console.log('🔑 BOT_TOKEN loaded:', process.env.BOT_TOKEN ? process.env.BOT_TOKEN.trim().substring(0, 5) + '...' : 'MISSING');
-
-const path = require('path');
-const app = express();
+let createClient, Groq, Telegraf;
+try { ({ createClient } = require('@supabase/supabase-js')); } catch(e) { console.warn('⚠️  supabase-js not available'); }
+try { ({ Groq } = require('groq-sdk')); } catch(e) { console.warn('⚠️  groq-sdk not available'); }
+try { ({ Telegraf } = require('telegraf')); } catch(e) { console.warn('⚠️  telegraf not available'); }
 app.set('trust proxy', 1); // Railway is behind a reverse proxy
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -314,22 +331,7 @@ app.get('/super-admin', requireAdmin, (req, res) => {
     res.render('super_admin.html', { users: users });
 });
 
-// Health check — responds instantly for Railway Metal
-app.get('/healthz', (req, res) => res.status(200).send('ok'));
-
-// ============================================================
-// FAST START: Listen on port IMMEDIATELY so Railway doesn't timeout
-// ============================================================
-const PORT = process.env.PORT || 3000;
-const server = app.listen(PORT, '0.0.0.0', () => {
-    console.log(`🚀 Alex: Sales Agent live on port ${PORT}`);
-});
-server.on('error', (err) => {
-    if (err.code === 'EADDRINUSE') {
-        console.error(`❌ Port ${PORT} in use, trying ${PORT + 1}...`);
-        app.listen(PORT + 1, '0.0.0.0', () => console.log(`🚀 Fallback port ${PORT + 1}`));
-    } else { console.error('❌ Server error:', err.message); process.exit(1); }
-});
+// (Port already bound at top of file)
 
 // ============================================================
 // Non-blocking service initialization (after port is open)
