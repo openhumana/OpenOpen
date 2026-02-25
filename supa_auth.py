@@ -80,10 +80,12 @@ def supabase_verify_otp(email: str, token: str):
     if not client:
         return None, "Supabase not configured"
     try:
+        # Use the 6-digit email OTP flow configured in Supabase with Resend.
+        # This matches: supabase.auth.verifyOtp({ email, token, type: 'signup' })
         response = client.auth.verify_otp({
             "email": email,
             "token": token,
-            "type": "email",
+            "type": "signup",
         })
         if response.user and response.session:
             return {
