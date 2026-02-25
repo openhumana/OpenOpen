@@ -14,6 +14,7 @@ console.log('🔑 BOT_TOKEN loaded:', process.env.BOT_TOKEN ? process.env.BOT_TO
 
 const path = require('path');
 const app = express();
+app.set('trust proxy', 1); // Railway is behind a reverse proxy
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -22,7 +23,8 @@ app.use(session({
     secret: process.env.SESSION_SECRET || 'openhuman-secret-key-change-me',
     resave: false,
     saveUninitialized: false,
-    cookie: { secure: false, maxAge: 7 * 24 * 60 * 60 * 1000 } // 7 days
+    proxy: true,
+    cookie: { secure: process.env.NODE_ENV === 'production' ? true : false, maxAge: 7 * 24 * 60 * 60 * 1000, sameSite: 'lax' }
 }));
 
 // Absolute static pathing – serves CSS/JS/images with correct MIME types
@@ -160,7 +162,9 @@ app.post('/signup', async (req, res) => {
 
 app.post('/login', async (req, res) => {
     const login_mode = req.body.login_mode || 'user';
-    const renderErr = (err) => res.render('login.html', { signup: false, error: err, info_message: null, google_oauth: googleOAuthEnabled, app_password_set: !!APP_PASSWORD });
+    const isAjax = req.headers['x-requested-with'] === 'XMLHttpRequest';
+    const sendSuccess = () => isAjax ? res.json({ success: true, redirect: '/index' }) : res.redirect('/index');
+    const sendError = (err) => isAjax ? res.json({ success: false, error: err }) : res.render('login.html', { signup: false, error: err, info_message: null, google_oauth: googleOAuthEnabled, app_password_set: !!APP_PASSWORD });
 
     // Admin login via APP_PASSWORD
     if (login_mode === 'admin' && APP_PASSWORD) {
@@ -174,23 +178,22 @@ app.post('/login', async (req, res) => {
                 saveUsers(users);
             }
             req.session.user = { id: admin.id, email: admin.email, name: admin.name, is_admin: true, profile_name: 'Admin', profile_image_url: null };
-            return res.redirect('/index');
+            return sendSuccess();
         }
-        return renderErr('Invalid admin password.');
+        return sendError('Invalid admin password.');
     }
 
     // Regular user login
     const { email, password } = req.body;
-    if (!email || !password) return renderErr('Please enter email and password.');
+    if (!email || !password) return sendError('Please enter email and password.');
     const cleanEmail = email.toLowerCase().trim();
 
     // Try Supabase first
     if (supabase) {
         try {
             const { data, error } = await supabase.auth.signInWithPassword({ email: cleanEmail, password });
-            if (error) return renderErr(error.message);
+            if (error) return sendError(error.message);
 
-            // Find or create local user record
             let users = loadUsers();
             let user = users.find(u => u.email === cleanEmail);
             if (!user) {
@@ -199,20 +202,20 @@ app.post('/login', async (req, res) => {
                 saveUsers(users);
             }
             req.session.user = { id: user.id, email: user.email, name: user.name, is_admin: user.is_admin || cleanEmail === ADMIN_EMAIL_ENV, profile_name: user.profile_name, profile_image_url: user.profile_image_url };
-            return res.redirect('/index');
+            return sendSuccess();
         } catch (err) {
             console.error('Supabase login error:', err.message);
-            return renderErr('Login failed: ' + err.message);
+            return sendError('Login failed: ' + err.message);
         }
     }
 
     // Fallback: local auth
     const user = findUser(cleanEmail);
     if (!user || !bcrypt.compareSync(password, user.password_hash)) {
-        return renderErr('Invalid email or password.');
+        return sendError('Invalid email or password.');
     }
     req.session.user = { id: user.id, email: user.email, name: user.name, is_admin: user.is_admin || user.email === ADMIN_EMAIL_ENV, profile_name: user.profile_name, profile_image_url: user.profile_image_url };
-    res.redirect('/index');
+    sendSuccess();
 });
 
 app.get('/logout', (req, res) => {
