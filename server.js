@@ -346,37 +346,13 @@ const bot = BOT_TOKEN ? new Telegraf(BOT_TOKEN) : null;
 if (!groq) console.warn('⚠️  GROQ_API_KEY missing – chat disabled.');
 if (!bot) console.warn('⚠️  BOT_TOKEN missing – Telegram disabled.');
 
-// Non-blocking SMTP setup
-const nodemailer = require('nodemailer');
-const SMTP_USER = (process.env.SMTP_USER || '').trim();
-const SMTP_PASS = (process.env.SMTP_PASS || '').trim();
-let mailTransporter = null;
+// Resend email SDK (replaces Nodemailer)
+const { Resend } = require('resend');
+const RESEND_API_KEY = (process.env.RESEND_API_KEY || '').trim();
+const resend = RESEND_API_KEY ? new Resend(RESEND_API_KEY) : null;
 
-if (SMTP_USER && SMTP_PASS) {
-    try {
-        mailTransporter = nodemailer.createTransport({
-            host: 'mail.privateemail.com',
-            port: 465,
-            secure: true,
-            pool: true,
-            auth: { user: SMTP_USER, pass: SMTP_PASS },
-            tls: { rejectUnauthorized: false },
-            debug: true,
-            logger: true
-        });
-        // Non-blocking verify — don't await, don't block startup
-        mailTransporter.verify().then(() => {
-            console.log('✅ Email transporter verified (mail.privateemail.com:465)');
-        }).catch(err => {
-            console.warn('⚠️  Email transporter verify failed:', err.message, '— emails may not send');
-        });
-    } catch (err) {
-        console.warn('⚠️  Email setup failed:', err.message);
-        mailTransporter = null;
-    }
-} else {
-    console.warn('⚠️  Email features disabled (SMTP_USER/SMTP_PASS missing)');
-}
+if (resend) console.log('✅ Resend email SDK initialized');
+else console.warn('⚠️  RESEND_API_KEY missing – email features disabled');
 
 app.post('/api/lead', async (req, res) => {
     const { name, phone, email, company } = req.body;
@@ -391,18 +367,22 @@ app.post('/api/lead', async (req, res) => {
         ).catch(err => console.error('Telegram lead error:', err.message));
     }
 
-    // Send welcome email with Alex Resume PDF
-    if (mailTransporter) {
+    // Send welcome email with Alex Resume PDF via Resend
+    if (resend) {
         try {
             const alexResumePath = path.join(__dirname, 'static', 'Alex_Resume.pdf');
-            const fs = require('fs');
-            const attachments = fs.existsSync(alexResumePath)
-                ? [{ filename: 'Alex_Resume.pdf', path: alexResumePath }]
-                : [];
+            const attachments = [];
+            if (fs.existsSync(alexResumePath)) {
+                const fileBuffer = fs.readFileSync(alexResumePath);
+                attachments.push({
+                    filename: 'Alex_Resume.pdf',
+                    content: fileBuffer
+                });
+            }
 
-            await mailTransporter.sendMail({
-                from: `"Open Humana" <${SMTP_USER}>`,
-                to: email,
+            const { data, error: sendErr } = await resend.emails.send({
+                from: 'Alex <alex@openhumana.com>',
+                to: [email],
                 subject: 'Welcome to Open Humana — Meet Alex, Your Digital BDR',
                 html: `
                     <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:32px;background:#0a0a1a;color:#fff;border-radius:12px;">
@@ -415,9 +395,14 @@ app.post('/api/lead', async (req, res) => {
                         <p style="margin-top:24px;color:rgba(255,255,255,0.4);font-size:12px;">— The Open Humana Team</p>
                     </div>
                 `,
-                attachments
+                attachments: attachments.length ? attachments : undefined
             });
-            console.log(`📧 Welcome email sent to ${email}`);
+
+            if (sendErr) {
+                console.error('Resend error:', sendErr);
+            } else {
+                console.log(`📧 Welcome email sent to ${email} (Resend ID: ${data?.id})`);
+            }
         } catch (err) {
             console.error('Email send error:', err.message);
         }
