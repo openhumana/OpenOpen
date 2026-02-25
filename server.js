@@ -1,11 +1,12 @@
 require('dotenv').config();
 
 const express = require('express');
+const nunjucks = require('nunjucks');
 const { Groq } = require('groq-sdk');
 const { Telegraf } = require('telegraf');
 
 // Debug: verify BOT_TOKEN is loaded (shows only first 5 chars)
-console.log('🔑 BOT_TOKEN loaded:', process.env.BOT_TOKEN ? process.env.BOT_TOKEN.substring(0, 5) + '...' : 'MISSING');
+console.log('🔑 BOT_TOKEN loaded:', process.env.BOT_TOKEN ? process.env.BOT_TOKEN.trim().substring(0, 5) + '...' : 'MISSING');
 
 const path = require('path');
 const app = express();
@@ -13,20 +14,29 @@ app.use(express.json());
 app.use('/static', express.static(path.join(__dirname, 'static'))); // Serve CSS, images, videos at /static/*
 app.use('/templates', express.static(path.join(__dirname, 'templates'))); // Serve template assets
 
-// Serve HTML pages
-app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'templates', 'landing.html')));
-app.get('/login', (req, res) => res.sendFile(path.join(__dirname, 'templates', 'login.html')));
-app.get('/about', (req, res) => res.sendFile(path.join(__dirname, 'templates', 'about.html')));
-app.get('/contact', (req, res) => res.sendFile(path.join(__dirname, 'templates', 'contact.html')));
-app.get('/help', (req, res) => res.sendFile(path.join(__dirname, 'templates', 'help.html')));
-app.get('/privacy', (req, res) => res.sendFile(path.join(__dirname, 'templates', 'privacy.html')));
-app.get('/terms', (req, res) => res.sendFile(path.join(__dirname, 'templates', 'terms.html')));
-app.get('/compliance', (req, res) => res.sendFile(path.join(__dirname, 'templates', 'compliance.html')));
-app.get('/blog', (req, res) => res.sendFile(path.join(__dirname, 'templates', 'blog_page.html')));
-app.get('/verify-otp', (req, res) => res.sendFile(path.join(__dirname, 'templates', 'verify_otp.html')));
-app.get('/profile-setup', (req, res) => res.sendFile(path.join(__dirname, 'templates', 'profile_setup.html')));
-app.get('/super-admin', (req, res) => res.sendFile(path.join(__dirname, 'templates', 'super_admin.html')));
-app.get('/index', (req, res) => res.sendFile(path.join(__dirname, 'templates', 'index.html')));
+// Configure Nunjucks as the template engine (Jinja2-compatible)
+nunjucks.configure('templates', {
+    autoescape: true,
+    express: app,
+    watch: false,
+    noCache: process.env.NODE_ENV !== 'production'
+});
+app.set('view engine', 'html');
+
+// Serve HTML pages (using res.render for Nunjucks template processing)
+app.get('/', (req, res) => res.render('landing.html'));
+app.get('/login', (req, res) => res.render('login.html', { signup: false, error: null, info_message: null, google_oauth: false, app_password_set: false }));
+app.get('/about', (req, res) => res.render('about.html'));
+app.get('/contact', (req, res) => res.render('contact.html'));
+app.get('/help', (req, res) => res.render('help.html'));
+app.get('/privacy', (req, res) => res.render('privacy.html'));
+app.get('/terms', (req, res) => res.render('terms.html'));
+app.get('/compliance', (req, res) => res.render('compliance.html'));
+app.get('/blog', (req, res) => res.render('blog_page.html'));
+app.get('/verify-otp', (req, res) => res.render('verify_otp.html', { email: '', error: null }));
+app.get('/profile-setup', (req, res) => res.render('profile_setup.html', { user: { profile_image_url: null, profile_name: '' } }));
+app.get('/super-admin', (req, res) => res.render('super_admin.html'));
+app.get('/index', (req, res) => res.render('index.html', { user: null, telnyx_from: '' }));
 
 // 1. Initialize Alex's Brain (Groq) and Office Connection (Telegram)
 // Guard against missing env vars so the server doesn't crash on startup
