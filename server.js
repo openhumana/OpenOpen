@@ -99,7 +99,7 @@ const startAlex = async () => {
         }
     }
     const PORT = process.env.PORT || 3000;
-    const server = app.listen(PORT, () => console.log(`🚀 Alex: Sales Agent live on port ${PORT}`));
+    const server = app.listen(PORT, '0.0.0.0', () => console.log(`🚀 Alex: Sales Agent live on port ${PORT}`));
     server.on('error', (err) => {
         if (err.code === 'EADDRINUSE') {
             console.error(`❌ Port ${PORT} is already in use. Trying port ${PORT + 1}...`);
