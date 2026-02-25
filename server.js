@@ -5,6 +5,7 @@ const nunjucks = require('nunjucks');
 const session = require('express-session');
 const bcrypt = require('bcryptjs');
 const fs = require('fs');
+const { createClient } = require('@supabase/supabase-js');
 const { Groq } = require('groq-sdk');
 const { Telegraf } = require('telegraf');
 
@@ -51,6 +52,15 @@ const ADMIN_EMAIL_ENV = (process.env.ADMIN_EMAIL || '').trim().toLowerCase();
 const GOOGLE_CLIENT_ID = (process.env.GOOGLE_CLIENT_ID || '').trim();
 const GOOGLE_CLIENT_SECRET = (process.env.GOOGLE_CLIENT_SECRET || '').trim();
 const googleOAuthEnabled = !!(GOOGLE_CLIENT_ID && GOOGLE_CLIENT_SECRET);
+
+// Supabase client for auth
+const SUPABASE_URL = (process.env.SUPABASE_URL || '').trim();
+const SUPABASE_ANON_KEY = (process.env.SUPABASE_ANON_KEY || '').trim();
+const supabase = (SUPABASE_URL && SUPABASE_ANON_KEY)
+    ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+    : null;
+if (supabase) console.log('✅ Supabase auth connected');
+else console.warn('⚠️  SUPABASE_URL/SUPABASE_ANON_KEY missing – using local auth fallback');
 
 function loadUsers() {
     try { return JSON.parse(fs.readFileSync(USERS_FILE, 'utf8')); }
@@ -100,51 +110,62 @@ app.get('/signup', (req, res) => {
 
 app.post('/signup', async (req, res) => {
     const { name, email, password, confirm_password } = req.body;
-    if (!email || !password) {
-        return res.render('login.html', { signup: true, error: 'Email and password are required.', info_message: null, google_oauth: googleOAuthEnabled, app_password_set: !!APP_PASSWORD });
-    }
-    if (password.length < 8) {
-        return res.render('login.html', { signup: true, error: 'Password must be at least 8 characters.', info_message: null, google_oauth: googleOAuthEnabled, app_password_set: !!APP_PASSWORD });
-    }
-    if (confirm_password && password !== confirm_password) {
-        return res.render('login.html', { signup: true, error: 'Passwords do not match.', info_message: null, google_oauth: googleOAuthEnabled, app_password_set: !!APP_PASSWORD });
-    }
-    const existing = findUser(email);
-    if (existing) {
-        return res.render('login.html', { signup: true, error: 'An account with this email already exists.', info_message: null, google_oauth: googleOAuthEnabled, app_password_set: !!APP_PASSWORD });
+    const renderErr = (err) => res.render('login.html', { signup: true, error: err, info_message: null, google_oauth: googleOAuthEnabled, app_password_set: !!APP_PASSWORD });
+
+    if (!email || !password) return renderErr('Email and password are required.');
+    if (password.length < 8) return renderErr('Password must be at least 8 characters.');
+    if (confirm_password && password !== confirm_password) return renderErr('Passwords do not match.');
+
+    const cleanEmail = email.toLowerCase().trim();
+    const displayName = (name || '').trim() || cleanEmail.split('@')[0];
+
+    // Try Supabase first
+    if (supabase) {
+        try {
+            const { data, error } = await supabase.auth.signUp({
+                email: cleanEmail,
+                password: password,
+                options: { data: { display_name: displayName } }
+            });
+            if (error) return renderErr(error.message);
+
+            // If email confirmation is required
+            if (data.user && !data.session) {
+                return res.render('login.html', { signup: false, error: null, info_message: 'Account created! Please check your email to confirm, then sign in.', google_oauth: googleOAuthEnabled, app_password_set: !!APP_PASSWORD });
+            }
+
+            // Auto-confirmed — save locally and login
+            const users = loadUsers();
+            const newUser = { id: users.length + 1, name: displayName, email: cleanEmail, password_hash: '', is_admin: cleanEmail === ADMIN_EMAIL_ENV, profile_image_url: null, profile_name: displayName, created_at: new Date().toISOString(), supabase_id: data.user?.id, leads: 0, calls: 0, active_number: 'None' };
+            users.push(newUser);
+            saveUsers(users);
+            req.session.user = { id: newUser.id, email: newUser.email, name: newUser.name, is_admin: newUser.is_admin, profile_name: newUser.profile_name, profile_image_url: null };
+            return res.redirect('/index');
+        } catch (err) {
+            console.error('Supabase signup error:', err.message);
+            return renderErr('Signup failed: ' + err.message);
+        }
     }
 
+    // Fallback: local auth
+    if (findUser(cleanEmail)) return renderErr('An account with this email already exists.');
     const users = loadUsers();
     const hash = bcrypt.hashSync(password, 10);
-    const newUser = {
-        id: users.length + 1,
-        name: (name || '').trim() || email.split('@')[0],
-        email: email.toLowerCase().trim(),
-        password_hash: hash,
-        is_admin: email.toLowerCase().trim() === ADMIN_EMAIL_ENV,
-        profile_image_url: null,
-        profile_name: (name || '').trim() || email.split('@')[0],
-        created_at: new Date().toISOString(),
-        leads: 0,
-        calls: 0,
-        active_number: 'None'
-    };
+    const newUser = { id: users.length + 1, name: displayName, email: cleanEmail, password_hash: hash, is_admin: cleanEmail === ADMIN_EMAIL_ENV, profile_image_url: null, profile_name: displayName, created_at: new Date().toISOString(), leads: 0, calls: 0, active_number: 'None' };
     users.push(newUser);
     saveUsers(users);
-
-    // Auto-login after signup
     req.session.user = { id: newUser.id, email: newUser.email, name: newUser.name, is_admin: newUser.is_admin, profile_name: newUser.profile_name, profile_image_url: null };
     res.redirect('/index');
 });
 
-app.post('/login', (req, res) => {
+app.post('/login', async (req, res) => {
     const login_mode = req.body.login_mode || 'user';
+    const renderErr = (err) => res.render('login.html', { signup: false, error: err, info_message: null, google_oauth: googleOAuthEnabled, app_password_set: !!APP_PASSWORD });
 
     // Admin login via APP_PASSWORD
     if (login_mode === 'admin' && APP_PASSWORD) {
         const app_password = (req.body.app_password || '').trim();
         if (app_password === APP_PASSWORD) {
-            // Find or create admin user
             let users = loadUsers();
             let admin = users.find(u => u.email === 'admin@openhuman.local');
             if (!admin) {
@@ -155,17 +176,40 @@ app.post('/login', (req, res) => {
             req.session.user = { id: admin.id, email: admin.email, name: admin.name, is_admin: true, profile_name: 'Admin', profile_image_url: null };
             return res.redirect('/index');
         }
-        return res.render('login.html', { signup: false, error: 'Invalid admin password.', info_message: null, google_oauth: googleOAuthEnabled, app_password_set: !!APP_PASSWORD });
+        return renderErr('Invalid admin password.');
     }
 
     // Regular user login
     const { email, password } = req.body;
-    if (!email || !password) {
-        return res.render('login.html', { signup: false, error: 'Please enter email and password.', info_message: null, google_oauth: googleOAuthEnabled, app_password_set: !!APP_PASSWORD });
+    if (!email || !password) return renderErr('Please enter email and password.');
+    const cleanEmail = email.toLowerCase().trim();
+
+    // Try Supabase first
+    if (supabase) {
+        try {
+            const { data, error } = await supabase.auth.signInWithPassword({ email: cleanEmail, password });
+            if (error) return renderErr(error.message);
+
+            // Find or create local user record
+            let users = loadUsers();
+            let user = users.find(u => u.email === cleanEmail);
+            if (!user) {
+                user = { id: users.length + 1, name: cleanEmail.split('@')[0], email: cleanEmail, password_hash: '', is_admin: cleanEmail === ADMIN_EMAIL_ENV, profile_image_url: null, profile_name: data.user?.user_metadata?.display_name || cleanEmail.split('@')[0], created_at: new Date().toISOString(), supabase_id: data.user?.id, leads: 0, calls: 0, active_number: 'None' };
+                users.push(user);
+                saveUsers(users);
+            }
+            req.session.user = { id: user.id, email: user.email, name: user.name, is_admin: user.is_admin || cleanEmail === ADMIN_EMAIL_ENV, profile_name: user.profile_name, profile_image_url: user.profile_image_url };
+            return res.redirect('/index');
+        } catch (err) {
+            console.error('Supabase login error:', err.message);
+            return renderErr('Login failed: ' + err.message);
+        }
     }
-    const user = findUser(email);
+
+    // Fallback: local auth
+    const user = findUser(cleanEmail);
     if (!user || !bcrypt.compareSync(password, user.password_hash)) {
-        return res.render('login.html', { signup: false, error: 'Invalid email or password.', info_message: null, google_oauth: googleOAuthEnabled, app_password_set: !!APP_PASSWORD });
+        return renderErr('Invalid email or password.');
     }
     req.session.user = { id: user.id, email: user.email, name: user.name, is_admin: user.is_admin || user.email === ADMIN_EMAIL_ENV, profile_name: user.profile_name, profile_image_url: user.profile_image_url };
     res.redirect('/index');
