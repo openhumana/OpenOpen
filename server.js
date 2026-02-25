@@ -7,16 +7,18 @@ const app = express();
 app.use(express.json());
 app.use(express.static('.')); 
 
+// Initialize Groq and Telegram
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
-const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN);
+const bot = new Telegraf(process.env.BOT_TOKEN);
 
+// Alex's Chat Logic
 app.post('/api/chat', async (req, res) => {
     const { message } = req.body;
     try {
         // JOB 1: THE SALES AGENT
         const completion = await groq.chat.completions.create({
             messages: [
-                { role: "system", content: "You are Alex, a high-performance Digital BDR for Open Humana. You are professional and drive sales." },
+                { role: "system", content: "You are Alex, a high-performance Digital BDR for Open Humana. You are professional, high-energy, and drive sales." },
                 { role: "user", content: message }
             ],
             model: "llama3-8b-8192",
@@ -24,16 +26,28 @@ app.post('/api/chat', async (req, res) => {
 
         const alexReply = completion.choices[0].message.content;
 
-        // JOB 2: THE REPORTER (Sends to your Telegram)
+        // JOB 2: THE REPORTER (Sends to Telegram)
         bot.telegram.sendMessage(process.env.TELEGRAM_CHAT_ID, 
-            `💼 Alex Lead Report:\nUser: ${message}\nAlex: ${alexReply}`
-        ).catch(e => console.error("Telegram Error", e));
+            `💼 **Alex Interaction Report**\n\nLead: "${message}"\n\nAlex: "${alexReply}"`
+        ).catch(err => console.error("Telegram error:", err.message));
 
         res.json({ reply: alexReply });
     } catch (error) {
-        res.status(500).json({ error: "Offline" });
+        console.error("Alex error:", error);
+        res.status(500).json({ error: "Alex is offline." });
     }
 });
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Alex live on ${PORT}`));
+// Safe Start
+const startAlex = async () => {
+    try {
+        await bot.launch();
+        console.log('✅ Alex connected to Telegram');
+    } catch (err) {
+        console.error('❌ Telegram failed:', err.message);
+    }
+    const PORT = process.env.PORT || 3000;
+    app.listen(PORT, () => console.log(`🚀 Alex live on port ${PORT}`));
+};
+
+startAlex();
