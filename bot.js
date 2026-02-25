@@ -3,16 +3,19 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 
-// Initialize bot with the environment variable
+// 1. Initialize Bot with Token from Railway Variables
 const bot = new Telegraf(process.env.BOT_TOKEN);
 
-// Website logic to restore your original index.html
+// 2. WEB SERVER: This restores your original index.html
 const server = http.createServer((req, res) => {
+    // This looks for your original website files in your folder
     const filePath = path.join(__dirname, req.url === '/' ? 'index.html' : req.url);
+    
     fs.readFile(filePath, (err, data) => {
         if (err) {
+            // If original file is missing, show a simple status to keep Railway green
             res.writeHead(200, { 'Content-Type': 'text/plain' });
-            res.end('Service Online');
+            res.end('Open Humana: System Online');
             return;
         }
         res.writeHead(200);
@@ -20,29 +23,30 @@ const server = http.createServer((req, res) => {
     });
 });
 
-// Start the web server
-server.listen(process.env.PORT || 8080, '0.0.0.0');
+// Bind to Port 8080 or Railway's dynamic port
+server.listen(process.env.PORT || 8080, '0.0.0.0', () => {
+    console.log("Website/Server is Live");
+});
 
-// Telegram Listener (Silent Observer Mode)
+// 3. SILENT OBSERVER: Alex observes everything but only replies in Private
 bot.on('text', async (ctx) => {
-    console.log(`Alex observing: ${ctx.message.text}`);
+    // Log to server console (Observing)
+    console.log(`Alex observed message: ${ctx.message.text}`);
+
+    // ONLY reply if it's a 1-on-1 private chat with you
     if (ctx.chat.type === 'private') {
-        // Your AI generation code here
+        try {
+            // This is where your AI logic (alexBrain) should be called
+            // const response = await alexBrain.generate(ctx.message.text);
+            // await ctx.reply(response);
+            await ctx.reply("Observing. I will only respond to private directives.");
+        } catch (err) {
+            console.error("AI Error:", err);
+        }
     }
 });
 
-// Launch bot AFTER the server is ready
-bot.launch().catch(err => console.error('Bot launch failed:', err));
-
-// 3. THE SILENT OBSERVER LOGIC
-bot.on('text', async (ctx) => {
-    console.log(`Alex observing: ${ctx.message.text}`); // He stays silent on server
-    
-    // Only responds if it's a private 1-on-1 message
-    if (ctx.chat.type === 'private') {
-        // ... your existing AI response code ...
-        // ctx.reply(aiResponse);
-    }
+// 4. LAUNCH: This must be at the very bottom
+bot.launch().then(() => console.log("Alex is monitoring Telegram...")).catch(err => {
+    console.error("CRITICAL: Bot failed to launch. Check your BOT_TOKEN variable!", err.message);
 });
-
-bot.launch();
