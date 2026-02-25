@@ -2,80 +2,75 @@ const { Telegraf } = require('telegraf');
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
+const Groq = require('groq-sdk');
 
-// 1. Initialize Alex (The Bot)
-const token = process.env.BOT_TOKEN;
+// 1. Initialize Groq & Bot
+const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
+const bot = new Telegraf(process.env.BOT_TOKEN);
 
-// DEBUG: This helps us see if Railway is actually passing the token to the code
-if (!token) {
-    console.error("CRITICAL: BOT_TOKEN variable is empty in Railway!");
-} else {
-    console.log(`System: Token detected (starting with: ${token.substring(0, 5)}...)`);
+// 2. THE CTO BRAIN FUNCTION (One brain for both Telegram and Web)
+async function getCTOResponse(userMessage) {
+    const chatCompletion = await groq.chat.completions.create({
+        messages: [
+            { 
+                role: "system", 
+                content: "You are Alex, the Business CTO of Open Humana. You are brilliant, strategic, and professional. You provide technical roadmaps and business logic. You never repeat the same canned response." 
+            },
+            { role: "user", content: userMessage }
+        ],
+        model: "llama3-8b-8192", // Fast and smart
+    });
+    return chatCompletion.choices[0].message.content;
 }
 
-const bot = new Telegraf('8796414492:AAHp90vVeJXinWRD-e2OZNFAu2Giqv9KQZk')
-
-// 2. THE WEBSITE SERVER (Handles landing page + CSS/Images)
-const server = http.createServer((req, res) => {
-    let filePath;
-    
-    if (req.url === '/' || req.url === '/index.html') {
-        filePath = path.join(__dirname, 'templates', 'landing.html');
-    } else {
-        // Correctly serves /static/ files for your styles/images
-        filePath = path.join(__dirname, req.url.replace(/^\//, ''));
+// 3. WEB SERVER (Now handles Website files AND Live Chat messages)
+const server = http.createServer(async (req, res) => {
+    // API ENDPOINT FOR LIVE CHAT
+    if (req.url === '/api/chat' && req.method === 'POST') {
+        let body = '';
+        req.on('data', chunk => { body += chunk.toString(); });
+        req.on('end', async () => {
+            const { message } = JSON.parse(body);
+            const aiReply = await getCTOResponse(message);
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ reply: aiReply }));
+        });
+        return;
     }
+
+    // WEB FILE HANDLER (Your beautiful landing page)
+    let filePath = req.url === '/' || req.url === '/index.html' 
+        ? path.join(__dirname, 'templates', 'landing.html') 
+        : path.join(__dirname, req.url.replace(/^\//, ''));
 
     fs.readFile(filePath, (err, data) => {
         if (err) {
             res.writeHead(200, { 'Content-Type': 'text/plain' });
-            res.end('Open Humana: System Online');
+            res.end('System Online');
             return;
         }
-
         const ext = path.extname(filePath).toLowerCase();
-        const mimeTypes = {
-            '.html': 'text/html',
-            '.css': 'text/css',
-            '.js': 'text/javascript',
-            '.png': 'image/png',
-            '.jpg': 'image/jpeg',
-            '.gif': 'image/gif',
-            '.svg': 'image/svg+xml',
-        };
-
+        const mimeTypes = { '.html': 'text/html', '.css': 'text/css', '.js': 'text/javascript' };
         res.writeHead(200, { 'Content-Type': mimeTypes[ext] || 'application/octet-stream' });
         res.end(data);
     });
 });
 
-server.listen(process.env.PORT || 8080, '0.0.0.0', () => {
-    console.log("🚀 Web Server initialized. openhumana.com is live.");
-});
-
-// 3. SILENT OBSERVER LOGIC
+// 4. TELEGRAM LOGIC (Using the CTO Brain)
 bot.on('text', async (ctx) => {
-    // Observer Role: Log all activity to the server console
-    console.log(`[Observer] Message from ${ctx.from.username || 'User'}: ${ctx.message.text}`);
-
-    // Response Role: Alex ONLY speaks in private 1-on-1 chats
+    console.log(`[CTO Observer] ${ctx.from.username}: ${ctx.message.text}`);
+    
     if (ctx.chat.type === 'private') {
         try {
-            await ctx.reply("System authorized. I am observing and ready for private directives.");
+            await ctx.sendChatAction('typing');
+            const response = await getCTOResponse(ctx.message.text);
+            await ctx.reply(response);
         } catch (error) {
-            console.error("Telegram Reply Error:", error.message);
+            console.error("Groq Error:", error);
+            await ctx.reply("I'm currently reviewing our infrastructure. Standing by.");
         }
     }
 });
 
-// 4. LAUNCH
-bot.launch()
-    .then(() => console.log("🤖 Alex is now observing Telegram..."))
-    .catch(err => {
-        console.error("❌ Bot failed to start. Telegram rejected the token (401).");
-        console.error("Error Detail:", err.message);
-    });
-
-// Handle graceful shutdowns
-process.once('SIGINT', () => bot.stop('SIGINT'));
-process.once('SIGTERM', () => bot.stop('SIGTERM'));
+server.listen(process.env.PORT || 8080, '0.0.0.0');
+bot.launch().then(() => console.log("🤖 CTO Alex is Live on Telegram & Web"));
