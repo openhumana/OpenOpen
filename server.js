@@ -68,7 +68,7 @@ app.post('/api/chat', async (req, res) => {
                 { role: "system", content: "You are Alex, a high-performance Digital BDR for Open Humana. Be professional and drive sales." },
                 { role: "user", content: message }
             ],
-            model: "llama3-8b-8192",
+            model: "llama-3.1-8b-instant",
         });
 
         const alexReply = completion.choices[0].message.content;
@@ -87,28 +87,32 @@ app.post('/api/chat', async (req, res) => {
     }
 });
 
-// 3. Safe Start: Don't let a bad token crash the whole site
-const startAlex = async () => {
-    if (bot) {
-        try {
-            await bot.launch();
-            console.log('✅ Alex: Connected to Telegram Digital Office');
-        } catch (err) {
-            console.error('❌ Alex: Telegram connection failed. Error:', err.message);
-            console.error('🔍 Check your BOT_TOKEN in Railway environment variables. Current token starts with:', BOT_TOKEN ? BOT_TOKEN.substring(0, 5) + '...' : 'MISSING');
-        }
-    }
-    const PORT = process.env.PORT || 3000;
-    const server = app.listen(PORT, '0.0.0.0', () => console.log(`🚀 Alex: Sales Agent live on port ${PORT}`));
-    server.on('error', (err) => {
-        if (err.code === 'EADDRINUSE') {
-            console.error(`❌ Port ${PORT} is already in use. Trying port ${PORT + 1}...`);
-            app.listen(PORT + 1, () => console.log(`🚀 Alex: Sales Agent live on fallback port ${PORT + 1}`));
-        } else {
-            console.error('❌ Server error:', err.message);
-            process.exit(1);
-        }
-    });
-};
+// 3. Safe Start: Web server starts FIRST, then Telegram bot connects in background
+const PORT = process.env.PORT || 3000;
+const server = app.listen(PORT, '0.0.0.0', () => {
+    console.log(`🚀 Alex: Sales Agent live on port ${PORT}`);
 
-startAlex();
+    // Launch Telegram bot in background (non-blocking) after server is up
+    if (bot) {
+        bot.launch()
+            .then(() => console.log('✅ Alex: Connected to Telegram Digital Office'))
+            .catch(err => {
+                console.error('❌ Alex: Telegram connection failed. Error:', err.message);
+                console.error('🔍 Check your BOT_TOKEN in Railway environment variables. Current token starts with:', BOT_TOKEN ? BOT_TOKEN.substring(0, 5) + '...' : 'MISSING');
+            });
+    }
+});
+
+server.on('error', (err) => {
+    if (err.code === 'EADDRINUSE') {
+        console.error(`❌ Port ${PORT} is already in use. Trying port ${PORT + 1}...`);
+        app.listen(PORT + 1, '0.0.0.0', () => console.log(`🚀 Alex: Sales Agent live on fallback port ${PORT + 1}`));
+    } else {
+        console.error('❌ Server error:', err.message);
+        process.exit(1);
+    }
+});
+
+// Graceful shutdown
+process.once('SIGINT', () => { if (bot) bot.stop('SIGINT'); process.exit(0); });
+process.once('SIGTERM', () => { if (bot) bot.stop('SIGTERM'); process.exit(0); });
