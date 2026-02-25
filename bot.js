@@ -1,4 +1,8 @@
-res.end(`
+const http = require('http');
+
+const server = http.createServer((req, res) => {
+  res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+  res.end(`
   <!DOCTYPE html>
   <html lang="en">
     <head>
@@ -6,11 +10,11 @@ res.end(`
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
       <title>Open Humana</title>
       <style>
-        body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #000; color: #fff; display: flex; justify-content: center; align-items: center; height: 100vh; }
+        body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #000; color: #fff; display: flex; justify-content: center; align-items: center; height: 100vh; overflow: hidden; }
         .container { text-align: center; }
-        h1 { font-weight: 200; letter-spacing: 5px; text-transform: uppercase; font-size: 2.5rem; }
+        h1 { font-weight: 200; letter-spacing: 5px; text-transform: uppercase; font-size: 2.5rem; margin: 0; }
         .status-dot { height: 8px; width: 8px; background-color: #0f0; border-radius: 50%; display: inline-block; margin-right: 10px; box-shadow: 0 0 10px #0f0; }
-        .footer { position: absolute; bottom: 20px; font-size: 0.8rem; opacity: 0.4; }
+        .footer { position: absolute; bottom: 20px; font-size: 0.8rem; opacity: 0.4; display: flex; align-items: center; }
       </style>
     </head>
     <body>
@@ -23,3 +27,12 @@ res.end(`
     </body>
   </html>
 `);
+});
+
+// Use Railway's dynamic port or default to 8080
+const PORT = process.env.PORT || 8080;
+
+// '0.0.0.0' allows Railway to route external traffic to your app
+server.listen(PORT, '0.0.0.0', () => {
+  console.log(`🚀 Open Humana Website is LIVE on port ${PORT}`);
+});
