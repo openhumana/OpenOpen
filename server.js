@@ -156,7 +156,42 @@ app.post('/api/chat', async (req, res) => {
     }
 });
 
-// 3. Safe Start: Web server starts FIRST, then Telegram bot connects in background
+// 4. Alex's Two-Way Telegram Intelligence (Digital Chief of Staff)
+if (bot) {
+    const ADMIN_SYSTEM_PROMPT = 'You are Alex, the man in charge of the OpenHumana Digital Office. You are speaking to your CEO. Be professional, witty, and report on the digital office status when asked. Keep responses concise but insightful.';
+
+    bot.on('text', async (ctx) => {
+        const senderId = String(ctx.chat.id);
+
+        // Safety Guard: only the boss can talk to Alex
+        if (senderId !== ADMIN_CHAT_ID) {
+            return ctx.reply('👋 Hey there! I\'m Alex, the Digital Chief of Staff at Open Humana. I only take orders from the CEO. Visit openhumana.com if you\'d like to learn more!');
+        }
+
+        // Boss detected — route to Groq AI with Admin persona
+        if (!groq) {
+            return ctx.reply('⚠️ Boss, my brain (Groq API) is offline. Check the GROQ_API_KEY in Railway.');
+        }
+
+        try {
+            const completion = await groq.chat.completions.create({
+                messages: [
+                    { role: 'system', content: ADMIN_SYSTEM_PROMPT },
+                    { role: 'user', content: ctx.message.text }
+                ],
+                model: 'llama-3.1-8b-instant',
+            });
+
+            const reply = completion.choices[0].message.content;
+            await ctx.reply(reply);
+        } catch (err) {
+            console.error('Alex Admin Glitch:', err.message);
+            await ctx.reply('😅 Sorry boss, I hit a snag. Give me a sec and try again.');
+        }
+    });
+}
+
+// 5. Safe Start: Web server starts FIRST, then Telegram bot connects in background
 const PORT = process.env.PORT || 3000;
 const server = app.listen(PORT, '0.0.0.0', () => {
     console.log(`🚀 Alex: Sales Agent live on port ${PORT}`);
