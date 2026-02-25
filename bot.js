@@ -1,32 +1,23 @@
-const { Telegraf } = require('telegraf');
-const { askAlex } = require('./alexBrain');
-require('dotenv').config();
+const http = require('http');
 
-const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN);
-const ADMIN_ID = process.env.ADMIN_CHAT_ID;
-
-// Security Middleware: Only talks to YOU
-bot.use(async (ctx, next) => {
-  if (ctx.from.id.toString() !== ADMIN_ID.toString()) {
-    return ctx.reply("System Locked. You are not authorized to command Alex.");
-  }
-  return next();
+// This creates the actual website content for openhumana.com
+const server = http.createServer((req, res) => {
+  res.writeHead(200, { 'Content-Type': 'text/html' });
+  res.end(`
+    <!DOCTYPE html>
+    <html>
+      <head><title>Open Humana</title></head>
+      <body style="font-family: sans-serif; text-align: center; padding: 50px;">
+        <h1>Open Humana</h1>
+        <p>Alex is currently active and monitoring Telegram.</p>
+        <div style="color: green;">● Systems Operational</div>
+      </body>
+    </html>
+  `);
 });
 
-bot.start((ctx) => ctx.reply('Associate Alex online. Ready to lead Open Humana to the top. What is our first move?'));
-
-bot.on('text', async (ctx) => {
-  // Show Alex is "thinking"
-  await ctx.sendChatAction('typing');
-  
-  const response = await askAlex(ctx.message.text);
-  await ctx.reply(response);
+// Railway provides the PORT variable automatically
+const PORT = process.env.PORT || 8080;
+server.listen(PORT, () => {
+  console.log('Website is live on port ' + PORT);
 });
-
-bot.launch();
-
-// Enable graceful stop
-process.once('SIGINT', () => bot.stop('SIGINT'));
-process.once('SIGTERM', () => bot.stop('SIGTERM'));
-
-console.log("Alex is now listening on Telegram...");
