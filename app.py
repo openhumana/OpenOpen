@@ -534,7 +534,6 @@ def signup():
     return render_template("login.html", signup=True, error=error, info_message=info_message, google_oauth=google_oauth_available)
 
 
-@app.route("/verify-otp", methods=["GET", "POST"])
 def verify_otp_page():
     email = session.get("pending_verify_email")
     if not email:
