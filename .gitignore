@@ -17,3 +17,4 @@ replit.nix
 venv/
 .venv/
 node_modules/
+users.json

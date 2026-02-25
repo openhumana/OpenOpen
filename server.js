@@ -2,6 +2,9 @@ require('dotenv').config();
 
 const express = require('express');
 const nunjucks = require('nunjucks');
+const session = require('express-session');
+const bcrypt = require('bcryptjs');
+const fs = require('fs');
 const { Groq } = require('groq-sdk');
 const { Telegraf } = require('telegraf');
 
@@ -11,6 +14,15 @@ console.log('🔑 BOT_TOKEN loaded:', process.env.BOT_TOKEN ? process.env.BOT_TO
 const path = require('path');
 const app = express();
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+// Session middleware
+app.use(session({
+    secret: process.env.SESSION_SECRET || 'openhuman-secret-key-change-me',
+    resave: false,
+    saveUninitialized: false,
+    cookie: { secure: false, maxAge: 7 * 24 * 60 * 60 * 1000 } // 7 days
+}));
 
 // Absolute static pathing – serves CSS/JS/images with correct MIME types
 app.use('/static', express.static(path.join(__dirname, 'static'), {
@@ -30,9 +42,41 @@ nunjucks.configure(path.join(__dirname, 'templates'), {
 });
 app.set('view engine', 'html');
 
-// Serve HTML pages – every route uses res.render with a context object
+// ============================================================
+// Simple JSON-based user store
+// ============================================================
+const USERS_FILE = path.join(__dirname, 'users.json');
+const APP_PASSWORD = (process.env.APP_PASSWORD || '').trim();
+const ADMIN_EMAIL_ENV = (process.env.ADMIN_EMAIL || '').trim().toLowerCase();
+const GOOGLE_CLIENT_ID = (process.env.GOOGLE_CLIENT_ID || '').trim();
+const GOOGLE_CLIENT_SECRET = (process.env.GOOGLE_CLIENT_SECRET || '').trim();
+const googleOAuthEnabled = !!(GOOGLE_CLIENT_ID && GOOGLE_CLIENT_SECRET);
+
+function loadUsers() {
+    try { return JSON.parse(fs.readFileSync(USERS_FILE, 'utf8')); }
+    catch (e) { return []; }
+}
+function saveUsers(users) {
+    fs.writeFileSync(USERS_FILE, JSON.stringify(users, null, 2));
+}
+function findUser(email) {
+    return loadUsers().find(u => u.email === email.toLowerCase());
+}
+
+// Auth middleware
+function requireLogin(req, res, next) {
+    if (req.session && req.session.user) return next();
+    return res.redirect('/login');
+}
+function requireAdmin(req, res, next) {
+    if (req.session && req.session.user && req.session.user.is_admin) return next();
+    return res.redirect('/login');
+}
+
+// ============================================================
+// Public pages
+// ============================================================
 app.get('/', (req, res) => res.render('landing.html', {}));
-app.get('/login', (req, res) => res.render('login.html', { signup: false, error: null, info_message: null, google_oauth: false, app_password_set: false }));
 app.get('/about', (req, res) => res.render('about.html', {}));
 app.get('/contact', (req, res) => res.render('contact.html', {}));
 app.get('/help', (req, res) => res.render('help.html', {}));
@@ -40,10 +84,188 @@ app.get('/privacy', (req, res) => res.render('privacy.html', {}));
 app.get('/terms', (req, res) => res.render('terms.html', {}));
 app.get('/compliance', (req, res) => res.render('compliance.html', {}));
 app.get('/blog', (req, res) => res.render('blog_page.html', {}));
+
+// ============================================================
+// Auth routes: Login, Signup, Logout
+// ============================================================
+app.get('/login', (req, res) => {
+    if (req.session && req.session.user) return res.redirect('/index');
+    res.render('login.html', { signup: false, error: null, info_message: null, google_oauth: googleOAuthEnabled, app_password_set: !!APP_PASSWORD });
+});
+
+app.get('/signup', (req, res) => {
+    if (req.session && req.session.user) return res.redirect('/index');
+    res.render('login.html', { signup: true, error: null, info_message: null, google_oauth: googleOAuthEnabled, app_password_set: !!APP_PASSWORD });
+});
+
+app.post('/signup', async (req, res) => {
+    const { name, email, password, confirm_password } = req.body;
+    if (!email || !password) {
+        return res.render('login.html', { signup: true, error: 'Email and password are required.', info_message: null, google_oauth: googleOAuthEnabled, app_password_set: !!APP_PASSWORD });
+    }
+    if (password.length < 8) {
+        return res.render('login.html', { signup: true, error: 'Password must be at least 8 characters.', info_message: null, google_oauth: googleOAuthEnabled, app_password_set: !!APP_PASSWORD });
+    }
+    if (confirm_password && password !== confirm_password) {
+        return res.render('login.html', { signup: true, error: 'Passwords do not match.', info_message: null, google_oauth: googleOAuthEnabled, app_password_set: !!APP_PASSWORD });
+    }
+    const existing = findUser(email);
+    if (existing) {
+        return res.render('login.html', { signup: true, error: 'An account with this email already exists.', info_message: null, google_oauth: googleOAuthEnabled, app_password_set: !!APP_PASSWORD });
+    }
+
+    const users = loadUsers();
+    const hash = bcrypt.hashSync(password, 10);
+    const newUser = {
+        id: users.length + 1,
+        name: (name || '').trim() || email.split('@')[0],
+        email: email.toLowerCase().trim(),
+        password_hash: hash,
+        is_admin: email.toLowerCase().trim() === ADMIN_EMAIL_ENV,
+        profile_image_url: null,
+        profile_name: (name || '').trim() || email.split('@')[0],
+        created_at: new Date().toISOString(),
+        leads: 0,
+        calls: 0,
+        active_number: 'None'
+    };
+    users.push(newUser);
+    saveUsers(users);
+
+    // Auto-login after signup
+    req.session.user = { id: newUser.id, email: newUser.email, name: newUser.name, is_admin: newUser.is_admin, profile_name: newUser.profile_name, profile_image_url: null };
+    res.redirect('/index');
+});
+
+app.post('/login', (req, res) => {
+    const login_mode = req.body.login_mode || 'user';
+
+    // Admin login via APP_PASSWORD
+    if (login_mode === 'admin' && APP_PASSWORD) {
+        const app_password = (req.body.app_password || '').trim();
+        if (app_password === APP_PASSWORD) {
+            // Find or create admin user
+            let users = loadUsers();
+            let admin = users.find(u => u.email === 'admin@openhuman.local');
+            if (!admin) {
+                admin = { id: users.length + 1, name: 'Admin', email: 'admin@openhuman.local', password_hash: bcrypt.hashSync(APP_PASSWORD, 10), is_admin: true, profile_name: 'Admin', profile_image_url: null, created_at: new Date().toISOString(), leads: 0, calls: 0, active_number: 'None' };
+                users.push(admin);
+                saveUsers(users);
+            }
+            req.session.user = { id: admin.id, email: admin.email, name: admin.name, is_admin: true, profile_name: 'Admin', profile_image_url: null };
+            return res.redirect('/index');
+        }
+        return res.render('login.html', { signup: false, error: 'Invalid admin password.', info_message: null, google_oauth: googleOAuthEnabled, app_password_set: !!APP_PASSWORD });
+    }
+
+    // Regular user login
+    const { email, password } = req.body;
+    if (!email || !password) {
+        return res.render('login.html', { signup: false, error: 'Please enter email and password.', info_message: null, google_oauth: googleOAuthEnabled, app_password_set: !!APP_PASSWORD });
+    }
+    const user = findUser(email);
+    if (!user || !bcrypt.compareSync(password, user.password_hash)) {
+        return res.render('login.html', { signup: false, error: 'Invalid email or password.', info_message: null, google_oauth: googleOAuthEnabled, app_password_set: !!APP_PASSWORD });
+    }
+    req.session.user = { id: user.id, email: user.email, name: user.name, is_admin: user.is_admin || user.email === ADMIN_EMAIL_ENV, profile_name: user.profile_name, profile_image_url: user.profile_image_url };
+    res.redirect('/index');
+});
+
+app.get('/logout', (req, res) => {
+    req.session.destroy();
+    res.redirect('/login');
+});
+
+// ============================================================
+// Google OAuth Login
+// ============================================================
+if (googleOAuthEnabled) {
+    app.get('/google_login', (req, res) => {
+        const redirectUri = `${req.protocol}://${req.get('host')}/google_callback`;
+        const url = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${GOOGLE_CLIENT_ID}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&scope=openid%20email%20profile&access_type=offline&prompt=select_account`;
+        res.redirect(url);
+    });
+
+    app.get('/google_callback', async (req, res) => {
+        const { code } = req.query;
+        if (!code) return res.redirect('/login');
+
+        try {
+            const redirectUri = `${req.protocol}://${req.get('host')}/google_callback`;
+            // Exchange code for tokens
+            const tokenResp = await fetch('https://oauth2.googleapis.com/token', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: new URLSearchParams({
+                    code, client_id: GOOGLE_CLIENT_ID, client_secret: GOOGLE_CLIENT_SECRET,
+                    redirect_uri: redirectUri, grant_type: 'authorization_code'
+                })
+            });
+            const tokenData = await tokenResp.json();
+            if (!tokenData.access_token) throw new Error('No access token');
+
+            // Get user info
+            const userResp = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
+                headers: { Authorization: `Bearer ${tokenData.access_token}` }
+            });
+            const profile = await userResp.json();
+            if (!profile.email) throw new Error('No email from Google');
+
+            // Find or create user
+            let users = loadUsers();
+            let user = users.find(u => u.email === profile.email.toLowerCase());
+            if (!user) {
+                user = {
+                    id: users.length + 1,
+                    name: profile.name || profile.email.split('@')[0],
+                    email: profile.email.toLowerCase(),
+                    password_hash: '',
+                    is_admin: profile.email.toLowerCase() === ADMIN_EMAIL_ENV,
+                    profile_image_url: profile.picture || null,
+                    profile_name: profile.name || profile.email.split('@')[0],
+                    created_at: new Date().toISOString(),
+                    leads: 0, calls: 0, active_number: 'None'
+                };
+                users.push(user);
+                saveUsers(users);
+            }
+
+            req.session.user = { id: user.id, email: user.email, name: user.name, is_admin: user.is_admin || user.email === ADMIN_EMAIL_ENV, profile_name: user.profile_name, profile_image_url: user.profile_image_url || profile.picture };
+            res.redirect('/index');
+        } catch (err) {
+            console.error('Google OAuth error:', err.message);
+            res.render('login.html', { signup: false, error: 'Google login failed. Please try again.', info_message: null, google_oauth: googleOAuthEnabled, app_password_set: !!APP_PASSWORD });
+        }
+    });
+} else {
+    app.get('/google_login', (req, res) => res.redirect('/login'));
+}
+
+// ============================================================
+// Protected pages
+// ============================================================
+app.get('/index', requireLogin, (req, res) => {
+    res.render('index.html', { user: req.session.user, secure_from: '' });
+});
+
 app.get('/verify-otp', (req, res) => res.render('verify_otp.html', { email: '', error: null }));
-app.get('/profile-setup', (req, res) => res.render('profile_setup.html', { user: { profile_image_url: null, profile_name: '' } }));
-app.get('/super-admin', (req, res) => res.render('super_admin.html', {}));
-app.get('/index', (req, res) => res.render('index.html', { user: null, secure_from: '' }));
+
+app.get('/profile-setup', requireLogin, (req, res) => {
+    res.render('profile_setup.html', { user: req.session.user });
+});
+
+app.get('/super-admin', requireAdmin, (req, res) => {
+    const users = loadUsers().map(u => ({
+        id: u.id,
+        name: u.profile_name || u.name || 'Unknown',
+        email: u.email,
+        leads: u.leads || 0,
+        calls: u.calls || 0,
+        active_number: u.active_number || 'None',
+        created_at: u.created_at ? new Date(u.created_at).toLocaleDateString() : 'N/A'
+    }));
+    res.render('super_admin.html', { users: users });
+});
 
 // 1. Initialize Alex's Brain (Groq) and Office Connection (Telegram)
 // Guard against missing env vars so the server doesn't crash on startup
