@@ -1,23 +1,25 @@
-const http = require('http');
-
-// This creates the actual website content for openhumana.com
-const server = http.createServer((req, res) => {
-  res.writeHead(200, { 'Content-Type': 'text/html' });
-  res.end(`
-    <!DOCTYPE html>
-    <html>
-      <head><title>Open Humana</title></head>
-      <body style="font-family: sans-serif; text-align: center; padding: 50px;">
+res.end(`
+  <!DOCTYPE html>
+  <html lang="en">
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Open Humana</title>
+      <style>
+        body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #000; color: #fff; display: flex; justify-content: center; align-items: center; height: 100vh; }
+        .container { text-align: center; }
+        h1 { font-weight: 200; letter-spacing: 5px; text-transform: uppercase; font-size: 2.5rem; }
+        .status-dot { height: 8px; width: 8px; background-color: #0f0; border-radius: 50%; display: inline-block; margin-right: 10px; box-shadow: 0 0 10px #0f0; }
+        .footer { position: absolute; bottom: 20px; font-size: 0.8rem; opacity: 0.4; }
+      </style>
+    </head>
+    <body>
+      <div class="container">
         <h1>Open Humana</h1>
-        <p>Alex is currently active and monitoring Telegram.</p>
-        <div style="color: green;">● Systems Operational</div>
-      </body>
-    </html>
-  `);
-});
-
-// Railway provides the PORT variable automatically
-const PORT = process.env.PORT || 8080;
-server.listen(PORT, () => {
-  console.log('Website is live on port ' + PORT);
-});
+      </div>
+      <div class="footer">
+        <span class="status-dot"></span> System Encrypted & Secure
+      </div>
+    </body>
+  </html>
+`);
