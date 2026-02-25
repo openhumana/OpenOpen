@@ -62,7 +62,69 @@ const bot = BOT_TOKEN
 if (!groq) console.warn('⚠️  GROQ_API_KEY is missing – /api/chat will return errors until it is set.');
 if (!bot) console.warn('⚠️  BOT_TOKEN is missing – Telegram integration disabled.');
 
-// 2. Alex's Sales Job (Website Chat)
+// 2. Lead Form Submission (Email + Telegram)
+const nodemailer = require('nodemailer');
+const SMTP_USER = (process.env.SMTP_USER || '').trim();
+const SMTP_PASS = (process.env.SMTP_PASS || '').trim();
+
+const mailTransporter = (SMTP_USER && SMTP_PASS)
+    ? nodemailer.createTransport({
+        service: 'gmail',
+        auth: { user: SMTP_USER, pass: SMTP_PASS }
+    })
+    : null;
+
+if (!mailTransporter) console.warn('⚠️  SMTP_USER/SMTP_PASS missing – lead emails disabled.');
+
+app.post('/api/lead', async (req, res) => {
+    const { name, phone, email, company } = req.body;
+    if (!name || !email) {
+        return res.status(400).json({ error: 'Name and email are required.' });
+    }
+
+    // Send Telegram notification to admin
+    if (bot && ADMIN_CHAT_ID) {
+        bot.telegram.sendMessage(ADMIN_CHAT_ID,
+            `🔥 **New Lead Captured**\n\nName: ${name}\nPhone: ${phone || 'N/A'}\nEmail: ${email}\nCompany: ${company || 'N/A'}`
+        ).catch(err => console.error('Telegram lead error:', err.message));
+    }
+
+    // Send welcome email with Alex Resume PDF
+    if (mailTransporter) {
+        try {
+            const alexResumePath = path.join(__dirname, 'static', 'Alex_Resume.pdf');
+            const fs = require('fs');
+            const attachments = fs.existsSync(alexResumePath)
+                ? [{ filename: 'Alex_Resume.pdf', path: alexResumePath }]
+                : [];
+
+            await mailTransporter.sendMail({
+                from: `"Open Humana" <${SMTP_USER}>`,
+                to: email,
+                subject: 'Welcome to Open Humana — Meet Alex, Your Digital BDR',
+                html: `
+                    <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:32px;background:#0a0a1a;color:#fff;border-radius:12px;">
+                        <h1 style="font-size:24px;margin-bottom:16px;">Hey ${name}! 👋</h1>
+                        <p style="color:rgba(255,255,255,0.7);line-height:1.7;">Thanks for your interest in Open Humana. Attached is Alex's resume — your future Digital BDR who works 24/7, never takes a sick day, and dials 3,000+ numbers per day.</p>
+                        <p style="color:rgba(255,255,255,0.7);line-height:1.7;">Our team will reach out within 15 minutes to get you set up.</p>
+                        <div style="margin-top:24px;padding:16px;background:rgba(255,255,255,0.05);border-radius:8px;border:1px solid rgba(255,255,255,0.1);">
+                            <p style="margin:0;color:rgba(255,255,255,0.5);font-size:13px;">Company: ${company || 'N/A'} | Phone: ${phone || 'N/A'}</p>
+                        </div>
+                        <p style="margin-top:24px;color:rgba(255,255,255,0.4);font-size:12px;">— The Open Humana Team</p>
+                    </div>
+                `,
+                attachments
+            });
+            console.log(`📧 Welcome email sent to ${email}`);
+        } catch (err) {
+            console.error('Email send error:', err.message);
+        }
+    }
+
+    res.json({ success: true, message: 'Thanks! We\'ll be in touch within 15 minutes.' });
+});
+
+// 3. Alex's Sales Job (Website Chat)
 app.post('/api/chat', async (req, res) => {
     const { message } = req.body;
     if (!groq) {
