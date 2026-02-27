@@ -91,7 +91,7 @@
             <div class="gads-topbar">
                 <div class="gads-topbar-left">
                     <div class="gads-breadcrumb" id="gadsBreadcrumb">
-                        <a class="gads-breadcrumb-item gads-breadcrumb-root" onclick="navigateTo('dashboard')">
+                        <a class="gads-breadcrumb-item gads-breadcrumb-root" href="{{ url_for('pricing') }}" style="display:none;"></a>
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
                         </a>
                         <svg class="gads-breadcrumb-sep" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="9 18 15 12 9 6"/></svg>
@@ -245,14 +245,29 @@
                         </div>
                     </div>
 
-                    <div class="gads-card" id="provisionCard" style="margin-bottom:20px;">
-                        <div class="gads-card-header">
-                            <h3>Alex's Phone Line</h3>
-                            <span id="provisionStatusBadge" style="font-size:0.8rem;padding:3px 10px;border-radius:20px;background:rgba(255,255,255,0.06);color:rgba(255,255,255,0.4);">Checking...</span>
-                        </div>
+            <div class="gads-card" id="provisionCard" style="margin-bottom:20px;">
+                <div class="gads-card-header" style="align-items:center;gap:12px;flex-wrap:wrap;">
+                    <div style="display:flex;align-items:center;gap:10px;">
+                        <h3 style="margin:0;">Alex's Phone Line</h3>
+                        <span id="provisionStatusBadge" class="badge-soft" style="font-size:0.8rem;padding:3px 10px;border-radius:20px;background:rgba(255,255,255,0.06);color:rgba(255,255,255,0.4);">Checking...</span>
+                    </div>
+                    <div style="margin-left:auto;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+                        <div id="creditChip" class="credit-chip">Credits: <span id="creditValue" data-initial="{{ '%.2f' % (user.credit_balance or 0) }}">${{ '%.2f' % (user.credit_balance or 0) }}</span></div>
+                        <a class="gads-btn gads-btn-primary" id="refillBtn" href="{{ url_for('pricing') }}">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                            Upgrade / Pricing
+                        </a>
+                    </div>
+                </div>
                         <div id="provisionContent" style="padding:16px 20px;">
                             <p id="provisionMsg" style="color:rgba(255,255,255,0.6);font-size:0.9rem;margin:0 0 14px;">Checking Alex's line status...</p>
-                            <button class="gads-btn gads-btn-primary" id="provisionBtn" onclick="provisionLine()" style="display:none;">
+                        <div id="creditBarWrap" style="display:flex;align-items:center;gap:10px;margin-top:10px;">
+                            <div style="flex:1;height:10px;border-radius:999px;background:rgba(255,255,255,0.08);overflow:hidden;">
+                                <div id="creditBarFill" style="height:100%;width:100%;background:linear-gradient(90deg,#22c55e,#16a34a);transition:width 0.3s ease,background 0.3s ease;"></div>
+                            </div>
+                            <span id="creditBarText" style="font-size:12px;color:rgba(255,255,255,0.7);min-width:72px;text-align:right;">${{ '%.2f' % (user.credit_balance or 0) }}</span>
+                        </div>
+                            <button class="gads-btn gads-btn-primary" id="provisionBtn" onclick="provisionLine()" style="display:none;margin-top:14px;">
                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
                                 Provision Line
                             </button>

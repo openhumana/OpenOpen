@@ -9,6 +9,8 @@ import bcrypt
 from datetime import datetime
 import logging
 
+from sqlalchemy import Numeric
+
 db = SQLAlchemy()
 logger = logging.getLogger("voicemail_app")
 
@@ -26,6 +28,7 @@ class User(UserMixin, db.Model):
     profile_image_url = db.Column(db.String(500), nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    credit_balance = db.Column(Numeric(10, 2), default=5.00, nullable=False)
     
     app_data = db.relationship('UserAppData', backref='user', lazy=True, cascade='all, delete-orphan')
     instance = db.relationship('UserInstance', backref='user', uselist=False, lazy=True, cascade='all, delete-orphan')
@@ -54,6 +57,7 @@ class User(UserMixin, db.Model):
             'email': self.email,
             'profile_name': self.profile_name,
             'profile_image_url': self.profile_image_url,
+            'credit_balance': float(self.credit_balance or 0),
             'has_google': self.google_id is not None,
             'created_at': self.created_at.isoformat() if self.created_at else None,
         }
@@ -151,6 +155,13 @@ def _ensure_schema():
             text("CREATE UNIQUE INDEX IF NOT EXISTS ix_users_supabase_id_unique ON users (supabase_id)")
         )
         db.session.commit()
+
+        if "credit_balance" not in existing_cols:
+            logger.warning("DB schema missing users.credit_balance; applying ALTER TABLE")
+            print("DB schema missing users.credit_balance; applying ALTER TABLE")
+            db.session.execute(text("ALTER TABLE users ADD COLUMN credit_balance NUMERIC(10,2) DEFAULT 5.00 NOT NULL"))
+            db.session.execute(text("UPDATE users SET credit_balance = 5.00 WHERE credit_balance IS NULL"))
+            db.session.commit()
 
     except Exception as e:
         # Don't crash the app on migration errors; log for Railway.

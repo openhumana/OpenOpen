@@ -12,3 +12,4 @@ psycopg2-binary
 Pillow
 supabase
 google-generativeai
+paypalcheckoutsdk==1.0.3

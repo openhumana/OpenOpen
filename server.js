@@ -367,41 +367,113 @@ app.post('/api/lead', async (req, res) => {
         ).catch(err => console.error('Telegram lead error:', err.message));
     }
 
-    // Send welcome email with Alex Resume PDF via Resend
+    // Send "Digital Resume" email via Resend (no attachments, pure HTML)
     if (resend) {
         try {
-            const alexResumePath = path.join(__dirname, 'static', 'Alex_Resume.pdf');
-            const attachments = [];
-            if (fs.existsSync(alexResumePath)) {
-                const fileBuffer = fs.readFileSync(alexResumePath);
-                attachments.push({
-                    filename: 'Alex_Resume.pdf',
-                    content: fileBuffer
-                });
-            }
+            const onboardingUrl = 'https://openhumana.com/onboarding';
+            const logoUrl = 'https://openhumana.com/static/images/logo.png';
+
+            const html = `
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f7f6;padding:24px 0;">
+              <tr>
+                <td align="center">
+                  <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:12px;overflow:hidden;font-family:Arial,Helvetica,sans-serif;color:#1a202c;box-shadow:0 10px 30px rgba(0,0,0,0.06);">
+                    <tr>
+                      <td align="center" style="padding:28px 24px 12px 24px;">
+                        <img src="${logoUrl}" alt="Open Humana" style="max-width:180px;height:auto;display:block;" />
+                      </td>
+                    </tr>
+                    <tr>
+                      <td align="center" style="padding:4px 24px 24px 24px;">
+                        <div style="font-size:22px;font-weight:700;letter-spacing:0.2px;">Alex: Senior Digital Associate</div>
+                        <div style="margin-top:6px;font-size:15px;color:#4a5568;">Reclaiming your hours, one lead at a time.</div>
+                      </td>
+                    </tr>
+                    <tr>
+                      <td style="padding:0 32px 8px 32px;">
+                        <p style="margin:0;font-size:14px;line-height:1.7;color:#1a202c;">Dear ${name}, Thank you for your interest in Open Humana. I am not a tool; I am the recovery of your wasted time. I take the exhaustion of the workday so you can live life—vacations, adventure, and family.</p>
+                      </td>
+                    </tr>
+                    <tr>
+                      <td style="padding:24px 32px 12px 32px;">
+                        <div style="font-size:14px;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;color:#1a202c;">Core Competencies</div>
+                      </td>
+                    </tr>
+                    <tr>
+                      <td style="padding:0 24px 8px 24px;">
+                        <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+                          <tr>
+                            ${[
+                              { title: 'Extreme Persistence', desc: '12+ touchpoints per lead without fatigue.' },
+                              { title: 'Voice Execution', desc: 'Hyper-personalized voicemails that sound human.' },
+                              { title: 'Instant Bridge', desc: '200ms connection speed to your desk.' }
+                            ].map(item => `
+                              <td width="33.33%" style="vertical-align:top;padding:0 8px 16px 8px;">
+                                <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px;">
+                                  <div style="font-size:14px;font-weight:700;color:#1a202c;">${item.title}</div>
+                                  <div style="margin-top:6px;font-size:13px;line-height:1.6;color:#4a5568;">${item.desc}</div>
+                                </div>
+                              </td>
+                            `).join('')}
+                          </tr>
+                        </table>
+                      </td>
+                    </tr>
+                    <tr>
+                      <td style="padding:8px 32px 12px 32px;">
+                        <div style="font-size:14px;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;color:#1a202c;">The Candidate Advantage</div>
+                      </td>
+                    </tr>
+                    <tr>
+                      <td style="padding:0 24px 24px 24px;">
+                        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;">
+                          <tr style="background:#f8fafc;">
+                            <th align="left" style="padding:12px 14px;font-size:13px;text-transform:uppercase;letter-spacing:0.5px;color:#1a202c;border-bottom:1px solid #e2e8f0;">Comparison</th>
+                            <th align="left" style="padding:12px 14px;font-size:13px;text-transform:uppercase;letter-spacing:0.5px;color:#1a202c;border-bottom:1px solid #e2e8f0;">Open Humana</th>
+                            <th align="left" style="padding:12px 14px;font-size:13px;text-transform:uppercase;letter-spacing:0.5px;color:#1a202c;border-bottom:1px solid #e2e8f0;">Legacy Staff</th>
+                          </tr>
+                          ${[
+                            { label: 'Management', oh: 'Zero overhead', legacy: 'Constant supervision' },
+                            { label: 'Activity', oh: '24/7/365', legacy: '40-hour weeks' },
+                            { label: 'Cost', oh: '$99/mo (Flat Fee)', legacy: 'Salaries + Benefits' }
+                          ].map(row => `
+                            <tr>
+                              <td style="padding:12px 14px;font-size:13px;color:#1a202c;border-bottom:1px solid #e2e8f0;">${row.label}</td>
+                              <td style="padding:12px 14px;font-size:13px;color:#3182ce;font-weight:700;border-bottom:1px solid #e2e8f0;">${row.oh}</td>
+                              <td style="padding:12px 14px;font-size:13px;color:#4a5568;border-bottom:1px solid #e2e8f0;">${row.legacy}</td>
+                            </tr>
+                          `).join('')}
+                        </table>
+                      </td>
+                    </tr>
+                    <tr>
+                      <td align="center" style="padding:8px 24px 32px 24px;">
+                        <a href="${onboardingUrl}" style="display:inline-block;background:#3182ce;color:#ffffff;text-decoration:none;padding:14px 26px;border-radius:999px;font-size:15px;font-weight:700;box-shadow:0 8px 20px rgba(49,130,206,0.35);">
+                          Finalize My Onboarding &amp; Reclaim My Time
+                        </a>
+                      </td>
+                    </tr>
+                    <tr>
+                      <td style="padding:0 32px 32px 32px;">
+                        <p style="margin:0;font-size:12px;line-height:1.6;color:#718096;">Company: ${company || 'N/A'} | Phone: ${phone || 'N/A'}</p>
+                      </td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+            </table>`;
 
             const { data, error: sendErr } = await resend.emails.send({
                 from: 'Alex <alex@openhumana.com>',
                 to: [email],
-                subject: 'Welcome to Open Humana — Meet Alex, Your Digital BDR',
-                html: `
-                    <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:32px;background:#0a0a1a;color:#fff;border-radius:12px;">
-                        <h1 style="font-size:24px;margin-bottom:16px;">Hey ${name}! 👋</h1>
-                        <p style="color:rgba(255,255,255,0.7);line-height:1.7;">Thanks for your interest in Open Humana. Attached is Alex's resume — your future Digital BDR who works 24/7, never takes a sick day, and dials 3,000+ numbers per day.</p>
-                        <p style="color:rgba(255,255,255,0.7);line-height:1.7;">Our team will reach out within 15 minutes to get you set up.</p>
-                        <div style="margin-top:24px;padding:16px;background:rgba(255,255,255,0.05);border-radius:8px;border:1px solid rgba(255,255,255,0.1);">
-                            <p style="margin:0;color:rgba(255,255,255,0.5);font-size:13px;">Company: ${company || 'N/A'} | Phone: ${phone || 'N/A'}</p>
-                        </div>
-                        <p style="margin-top:24px;color:rgba(255,255,255,0.4);font-size:12px;">— The Open Humana Team</p>
-                    </div>
-                `,
-                attachments: attachments.length ? attachments : undefined
+                subject: 'Alex’s Credentials — Your New Era of Productivity Starts Now',
+                html
             });
 
             if (sendErr) {
                 console.error('Resend error:', sendErr);
             } else {
-                console.log(`📧 Welcome email sent to ${email} (Resend ID: ${data?.id})`);
+                console.log(`📧 Digital Resume email sent to ${email} (Resend ID: ${data?.id})`);
             }
         } catch (err) {
             console.error('Email send error:', err.message);

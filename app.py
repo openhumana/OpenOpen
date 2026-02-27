@@ -12,6 +12,11 @@ import logging
 import threading
 import functools
 from datetime import datetime
+from decimal import Decimal, ROUND_HALF_UP
+
+from dotenv import load_dotenv
+load_dotenv()
+
 from flask import Flask, request, jsonify, render_template, send_from_directory, session, redirect, url_for, flash
 from werkzeug.utils import secure_filename
 from flask_login import LoginManager, login_user, logout_user, current_user, login_required as flask_login_required
@@ -132,7 +137,9 @@ app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get("DATABASE_URL", "sqlite:/
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {"pool_pre_ping": True, "pool_recycle": 300}
 
-from models import db, User, UserInstance, ProvisionedNumber, ensure_user_instance, init_db
+from models import db, User, UserInstance, ProvisionedNumber, UserAppData, ensure_user_instance, init_db
+import base64
+import requests
 init_db(app)
 
 login_manager = LoginManager()
@@ -161,6 +168,19 @@ ALLOWED_AUDIO = {"mp3", "wav"}
 ALLOWED_CSV = {"csv", "txt"}
 
 APP_PASSWORD = os.environ.get("APP_PASSWORD", "")
+PAYPAL_CLIENT_ID = os.environ.get("PAYPAL_CLIENT_ID", "")
+PAYPAL_CLIENT_SECRET = os.environ.get("PAYPAL_CLIENT_SECRET", "")
+PAYPAL_MODE = os.environ.get("PAYPAL_MODE", "sandbox").lower()
+PAYPAL_WEBHOOK_ID = os.environ.get("WEBHOOK_ID", "")
+
+# Plan definitions for SaaS pricing
+PLAN_MATRIX = {
+    "starter": {"amount": Decimal("99.00"), "instances": 1},
+    "business": {"amount": Decimal("399.00"), "instances": 5},
+}
+CALL_COST = Decimal("0.10")
+MIN_REFILL = Decimal("10.00")
+DEFAULT_REFILL = Decimal("25.00")
 
 
 def login_required(f):
@@ -172,6 +192,355 @@ def login_required(f):
             return jsonify({"error": "Not authenticated"}), 401
         return redirect(url_for("login"))
     return decorated
+
+
+def require_credit(f):
+    @functools.wraps(f)
+    def wrapped(*args, **kwargs):
+        try:
+            bal = Decimal(str(getattr(current_user, "credit_balance", 0) or 0))
+        except Exception:
+            bal = Decimal("0")
+        if bal <= Decimal("0.01"):
+            if request.is_json or request.headers.get("X-Requested-With"):
+                return jsonify({"error": "Insufficient credits. Please add credits to continue.", "code": "payment_required"}), 402
+            return "Payment Required", 402
+        return f(*args, **kwargs)
+    return wrapped
+
+
+def _get_user_balance(user_id):
+    user = User.query.filter_by(id=user_id).first()
+    if not user:
+        return Decimal("0")
+    try:
+        return Decimal(str(user.credit_balance or 0))
+    except Exception:
+        return Decimal("0")
+
+
+def _paypal_base_url():
+    return "https://api-m.paypal.com" if PAYPAL_MODE == "live" else "https://api-m.sandbox.paypal.com"
+
+
+def _paypal_access_token():
+    if not PAYPAL_CLIENT_ID or not PAYPAL_CLIENT_SECRET:
+        raise RuntimeError("PAYPAL credentials missing")
+    token_url = f"{_paypal_base_url()}/v1/oauth2/token"
+    auth = base64.b64encode(f"{PAYPAL_CLIENT_ID}:{PAYPAL_CLIENT_SECRET}".encode()).decode()
+    resp = requests.post(token_url, headers={"Authorization": f"Basic {auth}"}, data={"grant_type": "client_credentials"}, timeout=20)
+    resp.raise_for_status()
+    return resp.json().get("access_token")
+
+
+def _credit_user(user_id, amount):
+    if not user_id or not amount:
+        return None
+    user = User.query.filter_by(id=user_id).first()
+    if not user:
+        return None
+    bal = Decimal(str(user.credit_balance or 0))
+    user.credit_balance = (bal + Decimal(str(amount))).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    db.session.commit()
+    return user.credit_balance
+
+
+def _set_employee_instances(user_id, count):
+    try:
+        if not user_id:
+            return None
+        existing = UserAppData.query.filter_by(user_id=user_id, data_key="employee_instances").first()
+        payload = json.dumps({"unlocked": int(count)})
+        if existing:
+            existing.data_value = payload
+        else:
+            rec = UserAppData(user_id=user_id, data_key="employee_instances", data_value=payload)
+            db.session.add(rec)
+        db.session.commit()
+        ensure_user_instance(user_id)
+        return count
+    except Exception as e:
+        logger.error(f"Failed to set employee instances for user {user_id}: {e}")
+        return None
+
+
+def _send_masterpiece_email(to_email, user_name=None):
+    try:
+        from gmail_client import send_email
+    except Exception as e:
+        logger.error(f"Email module unavailable: {e}")
+        return False
+    if not to_email:
+        return False
+    subject = "Alex is joining your team! 🚀"
+    content = (
+        "Thank you for choosing Open Humana. Your payment was successful, and Alex is now being provisioned for your team. "
+        "You can find your credentials in the dashboard."
+    )
+    greeting = f"Hi {user_name}," if user_name else "Hi there,"
+    html_body = f"""
+    <html><body style='font-family:Inter,Arial,sans-serif;background:#0b1021;color:#e5e7eb;padding:32px;'>
+      <div style='max-width:520px;margin:0 auto;background:#0f172a;border:1px solid rgba(255,255,255,0.08);border-radius:18px;padding:28px;box-shadow:0 30px 80px rgba(0,0,0,0.35);'>
+        <h2 style='margin:0 0 12px;font-size:22px;color:#ffffff;'>Alex is joining your team! 🚀</h2>
+        <p style='margin:0 0 12px;color:rgba(229,231,235,0.8);line-height:1.6;'>{greeting}</p>
+        <p style='margin:0 0 16px;color:rgba(229,231,235,0.8);line-height:1.6;'>{content}</p>
+        <div style='margin-top:18px;padding:14px 16px;border-radius:12px;background:rgba(99,102,241,0.08);color:#c7d2fe;'>Payment Verified. Alex is on your way.</div>
+      </div>
+    </body></html>
+    """
+    text_body = f"{subject}\n\n{content}"
+    try:
+        return send_email(to_email=to_email, subject=subject, html_body=html_body, text_body=text_body)
+    except Exception as e:
+        logger.exception(f"Failed to send masterpiece email to {to_email}: {e}")
+        return False
+
+
+def _set_employee_instances(user_id, count):
+    try:
+        if not user_id:
+            return None
+        existing = UserAppData.query.filter_by(user_id=user_id, data_key="employee_instances").first()
+        payload = json.dumps({"unlocked": int(count)})
+        if existing:
+            existing.data_value = payload
+        else:
+            rec = UserAppData(user_id=user_id, data_key="employee_instances", data_value=payload)
+            db.session.add(rec)
+        db.session.commit()
+        ensure_user_instance(user_id)
+        return count
+    except Exception as e:
+        logger.error(f"Failed to set employee instances for user {user_id}: {e}")
+        return None
+
+
+def _send_masterpiece_email(to_email, user_name=None):
+    try:
+        from gmail_client import send_email
+    except Exception as e:
+        logger.error(f"Email module unavailable: {e}")
+        return False
+    if not to_email:
+        return False
+    subject = "Alex is joining your team! 🚀"
+    content = (
+        "Thank you for choosing Open Humana. Your payment was successful, and Alex is now being provisioned for your team. "
+        "You can find your credentials in the dashboard."
+    )
+    greeting = f"Hi {user_name}," if user_name else "Hi there,"
+    html_body = f"""
+    <html><body style='font-family:Inter,Arial,sans-serif;background:#0b1021;color:#e5e7eb;padding:32px;'>
+      <div style='max-width:520px;margin:0 auto;background:#0f172a;border:1px solid rgba(255,255,255,0.08);border-radius:18px;padding:28px;box-shadow:0 30px 80px rgba(0,0,0,0.35);'>
+        <h2 style='margin:0 0 12px;font-size:22px;color:#ffffff;'>Alex is joining your team! 🚀</h2>
+        <p style='margin:0 0 12px;color:rgba(229,231,235,0.8);line-height:1.6;'>{greeting}</p>
+        <p style='margin:0 0 16px;color:rgba(229,231,235,0.8);line-height:1.6;'>{content}</p>
+        <div style='margin-top:18px;padding:14px 16px;border-radius:12px;background:rgba(99,102,241,0.08);color:#c7d2fe;'>Payment Verified. Alex is on your way.</div>
+      </div>
+    </body></html>
+    """
+    text_body = f"{subject}\n\n{content}"
+    try:
+        return send_email(to_email=to_email, subject=subject, html_body=html_body, text_body=text_body)
+    except Exception as e:
+        logger.exception(f"Failed to send masterpiece email to {to_email}: {e}")
+        return False
+
+
+def _create_paypal_order(amount, user_id, meta=None):
+    access_token = _paypal_access_token()
+    url = f"{_paypal_base_url()}/v2/checkout/orders"
+    meta = meta or {}
+    payload = {
+        "intent": "CAPTURE",
+        "purchase_units": [
+            {
+                "amount": {"currency_code": "USD", "value": f"{amount:.2f}"},
+                "custom_id": str(user_id),
+                "description": meta.get("plan") or "credit_refill",
+            }
+        ],
+    }
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {access_token}",
+        "Prefer": "return=representation",
+    }
+    resp = requests.post(url, headers=headers, json=payload, timeout=20)
+    resp.raise_for_status()
+    return resp.json()
+
+
+def _capture_paypal_order(order_id):
+    access_token = _paypal_access_token()
+    url = f"{_paypal_base_url()}/v2/checkout/orders/{order_id}/capture"
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {access_token}",
+    }
+    resp = requests.post(url, headers=headers, json={}, timeout=20)
+    resp.raise_for_status()
+    return resp.json()
+
+
+def _verify_webhook(transmission_id, timestamp, webhook_id, event_body, cert_url, auth_algo, transmission_sig):
+    access_token = _paypal_access_token()
+    url = f"{_paypal_base_url()}/v1/notifications/verify-webhook-signature"
+    payload = {
+        "transmission_id": transmission_id,
+        "transmission_time": timestamp,
+        "cert_url": cert_url,
+        "auth_algo": auth_algo,
+        "transmission_sig": transmission_sig,
+        "webhook_id": webhook_id,
+        "webhook_event": event_body,
+    }
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {access_token}",
+    }
+    resp = requests.post(url, headers=headers, json=payload, timeout=20)
+    resp.raise_for_status()
+    return resp.json()
+
+
+@app.route("/billing")
+@login_required
+def billing_page():
+    plan = (request.args.get("plan") or "").lower().strip()
+    if plan not in PLAN_MATRIX:
+        plan = ""
+    return render_template(
+        "billing.html",
+        user=current_user,
+        default_refill=float(DEFAULT_REFILL),
+        min_refill=float(MIN_REFILL),
+        processor_id=PAYPAL_CLIENT_ID,
+        processor_mode=PAYPAL_MODE,
+        selected_plan=plan,
+    )
+
+
+@app.route("/pricing")
+def pricing():
+    logger.info("PRICING ROUTE LOADED")
+    return render_template("pricing.html")
+
+
+@app.route("/api/paypal/create-order", methods=["POST"])
+@login_required
+def paypal_create_order():
+    data = request.get_json() or {}
+    plan = (data.get("plan") or "").lower().strip()
+    amount = Decimal(str(data.get("amount", DEFAULT_REFILL)))
+    if plan in PLAN_MATRIX:
+        amount = PLAN_MATRIX[plan]["amount"]
+    if amount < MIN_REFILL and plan not in PLAN_MATRIX:
+        return jsonify({"error": f"Minimum refill is ${MIN_REFILL:.2f}"}), 400
+    try:
+        order = _create_paypal_order(amount, current_user.id, meta={"plan": plan or "refill"})
+        return jsonify(order), 200
+    except Exception as e:
+        logger.error(f"Create order failed: {e}")
+        return jsonify({"error": "Failed to create order"}), 500
+
+
+@app.route("/api/paypal/capture-order", methods=["POST"])
+@login_required
+def paypal_capture_order():
+    data = request.get_json() or {}
+    order_id = data.get("order_id")
+    plan = (data.get("plan") or "").lower().strip()
+    if not order_id:
+        return jsonify({"error": "order_id is required"}), 400
+    try:
+        resp = _capture_paypal_order(order_id)
+        status = resp.get("status") or resp.get("result", {}).get("status")
+        purchase_units = resp.get("purchase_units") or resp.get("result", {}).get("purchase_units", [])
+        amount_val = Decimal("0")
+        custom_id = None
+        if purchase_units:
+            pu = purchase_units[0]
+            amount_val = Decimal(str(pu.get("amount", {}).get("value", "0")))
+            custom_id = pu.get("custom_id")
+        if status == "COMPLETED":
+            target_user_id = custom_id or current_user.id
+            if plan in PLAN_MATRIX:
+                matrix = PLAN_MATRIX[plan]
+                amount_val = matrix["amount"]
+                _set_employee_instances(target_user_id, matrix["instances"])
+                credited = _credit_user(target_user_id, amount_val)
+            else:
+                credited = _credit_user(target_user_id, amount_val)
+
+            def _send_masterpiece():
+                try:
+                    _send_masterpiece_email(current_user.email, current_user.profile_name)
+                except Exception as e:
+                    logger.error(f"Masterpiece email failed: {e}")
+
+            threading.Thread(target=_send_masterpiece, daemon=True).start()
+
+            return jsonify({
+                "status": status,
+                "credited": float(credited or 0),
+                "message": "Payment Verified. Alex is on your way.",
+            }), 200
+        return jsonify({"status": status, "error": "Payment not completed"}), 400
+    except Exception as e:
+        logger.error(f"Capture order failed: {e}")
+        return jsonify({"error": "Failed to capture order"}), 500
+
+
+@app.route("/api/paypal/webhook", methods=["POST"])
+def paypal_webhook():
+    try:
+        transmission_id = request.headers.get("PayPal-Transmission-Id", "")
+        timestamp = request.headers.get("PayPal-Transmission-Time", "")
+        cert_url = request.headers.get("PayPal-Cert-Url", "")
+        auth_algo = request.headers.get("PayPal-Auth-Algo", "")
+        transmission_sig = request.headers.get("PayPal-Transmission-Sig", "")
+        body = request.get_json() or {}
+        verify = _verify_webhook(transmission_id, timestamp, PAYPAL_WEBHOOK_ID, body, cert_url, auth_algo, transmission_sig)
+        if verify.get("verification_status") != "SUCCESS":
+            return "", 400
+        event_type = body.get("event_type")
+        resource = body.get("resource", {})
+        if event_type == "PAYMENT.CAPTURE.COMPLETED":
+            amount_val = Decimal(str(resource.get("amount", {}).get("value", "0")))
+            custom_id = resource.get("custom_id")
+            if custom_id:
+                _credit_user(custom_id, amount_val)
+        return "", 200
+    except Exception as e:
+        logger.error(f"Webhook processing failed: {e}")
+        return "", 400
+
+
+def _bill_successful_call(call_control_id, user_id, amount=CALL_COST):
+    try:
+        if not user_id:
+            return
+        from storage import get_call_state
+        state = get_call_state(call_control_id)
+        if not state:
+            return
+        if state.get("billed"):
+            return
+        status = state.get("status", "")
+        if status not in ("transferred", "voicemail_complete"):
+            return
+        user = User.query.filter_by(id=user_id).first()
+        if not user:
+            return
+        user.credit_balance = (Decimal(str(user.credit_balance or 0)) - amount).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        if user.credit_balance < 0:
+            user.credit_balance = Decimal("0.00")
+        db.session.commit()
+        from storage import update_call_state
+        update_call_state(call_control_id, billed=True)
+    except Exception as e:
+        logger.error(f"Billing deduction failed for call {call_control_id}: {e}")
 
 
 # ---- Landing Page ----
@@ -521,7 +890,7 @@ def signup():
             if User.query.filter_by(email=email).first():
                 error = "An account with this email already exists"
             else:
-                user = User(email=email, profile_name=name or None)
+                user = User(email=email, profile_name=name or None, credit_balance=Decimal("5.00"))
                 user.set_password(password)
                 db.session.add(user)
                 db.session.commit()
@@ -699,6 +1068,7 @@ def serve_personalized_audio(filename):
 # ---- Start Campaign ----
 @app.route("/start", methods=["POST"])
 @login_required
+@require_credit
 def start():
     """
     Start a new calling campaign.
@@ -941,6 +1311,7 @@ def start():
 # ---- Test Call ----
 @app.route("/test_call", methods=["POST"])
 @login_required
+@require_credit
 def test_call():
     """Place a single test call to verify everything is working."""
     _detect_and_set_base_url()
