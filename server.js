@@ -5,8 +5,16 @@ require('dotenv').config();
 const express = require('express');
 const path = require('path');
 const fs = require('fs');
+
+// ✅ SAFE FETCH SUPPORT (prevents crash if native fetch not available)
+let fetch;
+try {
+  fetch = global.fetch ? global.fetch : require('node-fetch');
+} catch (e) {
+  console.warn('⚠️ fetch not available');
+}
+
 const app = express();
-const PORT = process.env.PORT || 3000;
 
 // Health check responds before anything else loads
 app.get('/healthz', (req, res) => res.status(200).send('ok'));
